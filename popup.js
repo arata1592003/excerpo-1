@@ -3,7 +3,7 @@
  * Refactored to use background script for long-running tasks.
  */
 
-const SOURCES = [Source17k, Source22biqu, SourceUukanshu, SourceJjwxc, SourceQidian, SourceBiquge, Source52shuku];
+const SOURCES = [Source17k, Source22biqu, SourceUukanshu, SourceJjwxc, SourceQidian, SourceBiquge, Source52shuku, SourceFanqienovel];
 function getSource(url) {
   return SOURCES.find(s => s.pattern.test(url)) || null;
 }
@@ -68,7 +68,7 @@ function renderBackgroundProgress(task) {
       <div style="font-size:10px;color:#999;margin-top:4px;">Bạn có thể đóng popup, việc tải sẽ tiếp tục.</div>
       ${isStopping ? '' : `
       <button id="btnStopDownload" style="width:100%;margin-top:8px;padding:6px;background:#ea4335;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;">
-        ⏹ Dừng lấy chương & Đóng gói ngay file ZIP
+        ⏹ Dừng tải ngầm ngay
       </button>
       `}
     `;
@@ -90,18 +90,16 @@ function renderBackgroundProgress(task) {
         });
       }
     }
-  } else if (task.status === 'packaging') {
-    progressDiv.innerHTML = `<div>📦 Đang nén zip...</div>${renderProgressBar(99)}`;
   } else if (task.status === 'completed') {
     progressDiv.innerHTML = `
       <div style="color:#0f9d58;font-weight:bold;">✅ Hoàn tất!</div>
-      <div style="font-size:10px;">Đã tải xong file ZIP.</div>
+      <div style="font-size:10px;">Tất cả các chương đã được tải xong.</div>
       ${renderProgressBar(100)}
     `;
     const btnAll = document.getElementById("btnDownloadAll");
     if (btnAll) {
       btnAll.disabled = false;
-      btnAll.textContent = `⬇ Tải lại toàn bộ (.zip)`;
+      btnAll.textContent = `⬇ Tải lại các chương đã chọn`;
     }
   } else if (task.status === 'error') {
     progressDiv.innerHTML = `<div style="color:red;">❌ Lỗi: ${task.error}</div>`;
@@ -175,116 +173,166 @@ function renderPreview(d, source, url, tabId, resultDiv) {
       }
 
       await chrome.storage.local.set({ lastState: { url, preview: d, chapters, timestamp: Date.now() } });
-      renderChapters(source, chapters, d.bookName, chapterDiv, tabId, url);
+      await renderChapters(source, chapters, d.bookName, chapterDiv, tabId, url);
     } catch (err) {
       chapterDiv.innerHTML = `<p style="color:red;font-size:12px;">❌ Lỗi: ${err.message}</p>`;
     }
   });
 }
 
-function renderChapters(source, chapters, bookName, chapterDiv, tabId, url) {
+async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url) {
+  const storage = await chrome.storage.local.get(["cachedFolder", "cachedFormat", "cachedConflictAction"]);
+  const defaultFolder = storage.cachedFolder || "Cu do grabber";
+  const defaultFormat = storage.cachedFormat || "docx";
+  const defaultConflict = storage.cachedConflictAction || "uniquify";
+
   chapterDiv.innerHTML = `
-    <p style="font-size:12px;color:#333;margin:4px 0;"><b>${chapters.length} chapters</b></p>
+    <div style="margin:6px 0;background:#f5f5f5;padding:6px;border-radius:4px;border:1px solid #eee;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <p style="font-size:12px;color:#333;margin:0;"><b>${chapters.length} chapters</b></p>
+        <div>
+          <button id="btnSelectAll" style="padding:2px 6px;font-size:10px;background:#e0e0e0;border:1px solid #ccc;border-radius:3px;cursor:pointer;color:#333;">Chọn tất cả</button>
+          <button id="btnDeselectAll" style="padding:2px 6px;font-size:10px;background:#e0e0e0;border:1px solid #ccc;border-radius:3px;cursor:pointer;color:#333;">Bỏ chọn tất cả</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <label style="font-size:10px;color:#666;white-space:nowrap;">Chọn nhanh:</label>
+        <input type="text" id="quickSelectInput" style="flex:1;padding:4px;font-size:11px;border:1px solid #ccc;border-radius:3px;" placeholder="vd: 1, 2, 5-10">
+        <button id="btnQuickSelect" style="padding:4px 8px;background:#1a73e8;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Chọn</button>
+      </div>
+    </div>
     <div style="max-height:300px;overflow-y:auto;border:1px solid #eee;border-radius:4px;margin-top:6px;">
       ${chapters.map((c, idx) => {
     const isVip = c.type === "vip";
     const icon = isVip ? "🔒" : c.type === "unvip" ? "🔓" : "";
     return `
           <div style="font-size:11px;padding:4px 8px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" class="chap-checkbox" data-idx="${idx}" checked>
             <span style="color:#999;min-width:30px;">#${c.chapter_number}</span>
             <a href="${c.chapter_url}" target="_blank" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a73e8;">
               ${c.chapter_title}
             </a>
             <span style="width:20px;text-align:center;flex-shrink:0;">${icon}</span>
-            <button data-idx="${idx}" class="btnDownload" style="padding:2px 8px;font-size:10px;background:#1a73e8;color:white;border:none;border-radius:3px;cursor:pointer;flex-shrink:0;">
-              ⬇ .docx
-            </button>
           </div>
         `;
   }).join('')}
     </div>
     <div style="margin-top:10px;background:#f5f5f5;padding:8px;border-radius:4px;border:1px solid #ddd;">
-      <p style="font-size:11px;color:#555;margin-bottom:6px;font-weight:bold;">⚙️ Cấu hình tải hàng loạt:</p>
+      <p style="font-size:11px;color:#555;margin-bottom:6px;font-weight:bold;">⚙️ Cấu hình tải:</p>
+      <div style="margin-bottom:10px;">
+        <label style="font-size:10px;color:#666;display:block;">Thư mục tải về (trong thư mục Downloads):</label>
+        <input type="text" id="downloadFolder" style="width:100%;padding:4px;font-size:11px;border:1px solid #ccc;border-radius:3px;" value="${defaultFolder}">
+      </div>
       <div style="display:flex;gap:10px;margin-bottom:10px;">
         <div style="flex:1;">
-          <label style="font-size:10px;color:#666;display:block;">Từ chương số:</label>
-          <input type="number" id="chapterFrom" style="width:100%;padding:4px;font-size:11px;border:1px solid #ccc;border-radius:3px;" value="1" min="1">
+          <label style="font-size:10px;color:#666;display:block;">Định dạng:</label>
+          <select id="formatSelect" style="width:100%;padding:4px;font-size:11px;border:1px solid #ccc;border-radius:3px;">
+            <option value="docx" ${defaultFormat === 'docx' ? 'selected' : ''}>.docx</option>
+            <option value="txt" ${defaultFormat === 'txt' ? 'selected' : ''}>.txt</option>
+          </select>
         </div>
         <div style="flex:1;">
-          <label style="font-size:10px;color:#666;display:block;">Đến chương số:</label>
-          <input type="number" id="chapterTo" style="width:100%;padding:4px;font-size:11px;border:1px solid #ccc;border-radius:3px;" value="${chapters.length}" min="1">
+          <label style="font-size:10px;color:#666;display:block;">Khi trùng file:</label>
+          <select id="conflictActionSelect" style="width:100%;padding:4px;font-size:11px;border:1px solid #ccc;border-radius:3px;">
+            <option value="uniquify" ${defaultConflict === 'uniquify' ? 'selected' : ''}>Tạo bản sao (1)</option>
+            <option value="overwrite" ${defaultConflict === 'overwrite' ? 'selected' : ''}>Ghi đè file cũ</option>
+          </select>
         </div>
       </div>
       <button id="btnDownloadAll" style="width:100%;padding:8px;background:#0f9d58;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:bold;">
-        ⬇ Tải các chương đã chọn (.zip)
+        ⬇ Tải các chương đã chọn (Chạy ngầm)
       </button>
       <div id="downloadProgress" style="margin-top:6px;font-size:11px;color:#666;min-height:16px;"></div>
     </div>
   `;
 
+  document.getElementById("downloadFolder").addEventListener("change", (e) => {
+    chrome.storage.local.set({ cachedFolder: e.target.value.trim() });
+  });
+  document.getElementById("formatSelect").addEventListener("change", (e) => {
+    chrome.storage.local.set({ cachedFormat: e.target.value });
+  });
+  document.getElementById("conflictActionSelect").addEventListener("change", (e) => {
+    chrome.storage.local.set({ cachedConflictAction: e.target.value });
+  });
+
+  document.getElementById("btnSelectAll").addEventListener("click", () => {
+    document.querySelectorAll(".chap-checkbox").forEach(cb => cb.checked = true);
+  });
+  document.getElementById("btnDeselectAll").addEventListener("click", () => {
+    document.querySelectorAll(".chap-checkbox").forEach(cb => cb.checked = false);
+  });
+
+  document.getElementById("btnQuickSelect").addEventListener("click", () => {
+    const val = document.getElementById("quickSelectInput").value;
+    const parts = val.replace(/#/g, '').split(/[, ]+/);
+    // Uncheck all first
+    document.querySelectorAll(".chap-checkbox").forEach(cb => cb.checked = false);
+    parts.forEach(p => {
+      p = p.trim();
+      if (!p) return;
+      if (p.includes('-')) {
+        const [start, end] = p.split('-').map(Number);
+        if (start && end) {
+          for (let i = start; i <= end; i++) {
+            const cb = document.querySelector(`.chap-checkbox[data-idx="${i - 1}"]`);
+            if (cb) cb.checked = true;
+          }
+        }
+      } else {
+        const num = Number(p);
+        if (num) {
+          const cb = document.querySelector(`.chap-checkbox[data-idx="${num - 1}"]`);
+          if (cb) cb.checked = true;
+        }
+      }
+    });
+  });
+
   // Download all button sends message to background
   document.getElementById("btnDownloadAll").addEventListener("click", () => {
     const btnAll = document.getElementById("btnDownloadAll");
-    let fromVal = parseInt(document.getElementById("chapterFrom").value) || 1;
-    let toVal = parseInt(document.getElementById("chapterTo").value) || chapters.length;
-
-    // Ràng buộc giá trị hợp lệ
-    if (fromVal < 1) fromVal = 1;
-    if (toVal > chapters.length) toVal = chapters.length;
-    if (fromVal > chapters.length) fromVal = chapters.length;
-    if (toVal < 1) toVal = 1;
-
-    if (fromVal > toVal) {
-      alert(`⚠️ Số chương bắt đầu (${fromVal}) không thể lớn hơn số chương kết thúc (${toVal})!`);
-      return;
-    }
-
-    // Cập nhật lại UI cho người dùng thấy giá trị đã được sửa
-    document.getElementById("chapterFrom").value = fromVal;
-    document.getElementById("chapterTo").value = toVal;
-
-    const filteredChapters = chapters.slice(fromVal - 1, toVal);
+    const checkboxes = document.querySelectorAll(".chap-checkbox:checked");
+    const filteredChapters = Array.from(checkboxes).map(cb => chapters[parseInt(cb.dataset.idx)]);
 
     if (filteredChapters.length === 0) {
-      alert("⚠️ Không có chương nào thỏa mãn điều kiện để tải!");
+      alert("⚠️ Không có chương nào được chọn!");
       return;
     }
 
+    const adsLinks = [
+      "https://omg10.com/4/10735701", "https://omg10.com/4/10659204", "https://omg10.com/4/10738319", "https://omg10.com/4/10735617", 
+      "https://omg10.com/4/10735521", "https://omg10.com/4/10738329", "https://omg10.com/4/10738329", "https://omg10.com/4/10738449", 
+      "https://omg10.com/4/10643504", "https://omg10.com/4/10738341", "https://omg10.com/4/10739756", "https://omg10.com/4/10643607", 
+      "https://omg10.com/4/10735467", "https://omg10.com/4/10735657", "https://omg10.com/4/10735481", "https://omg10.com/4/10738394", 
+      "https://omg10.com/4/10735670", "https://omg10.com/4/10738423", "https://omg10.com/4/10735494", "https://omg10.com/4/10643590", 
+      "https://omg10.com/4/10738345"
+    ];
+    const randomAd = adsLinks[Math.floor(Math.random() * adsLinks.length)];
+    chrome.tabs.create({ url: randomAd });
+
+    const folderName = document.getElementById("downloadFolder").value.trim() || defaultFolder;
+    const format = document.getElementById("formatSelect").value;
+    const conflictAction = document.getElementById("conflictActionSelect").value;
+    chrome.storage.local.set({ cachedFolder: folderName, cachedFormat: format, cachedConflictAction: conflictAction });
+
     btnAll.disabled = true;
-    btnAll.textContent = `⏳ Đang gửi ${filteredChapters.length} chương (từ #${fromVal} đến #${toVal})...`;
+    btnAll.textContent = `⏳ Đang gửi ${filteredChapters.length} chương...`;
 
     chrome.runtime.sendMessage({
       type: 'START_BATCH_DOWNLOAD',
-      data: { url, bookName, chapters: filteredChapters }
+      data: { url, bookName, folderName, format, conflictAction, chapters: filteredChapters }
     }, (response) => {
       if (!response) {
         btnAll.disabled = false;
         btnAll.textContent = "❌ Lỗi kết nối nền";
       } else {
-        btnAll.textContent = "🚀 Đã gửi! Theo dõi tiến trình bên dưới.";
+        btnAll.textContent = "🚀 Đã gửi! Đang tải nền...";
       }
     });
   });
 
-  // Individual button still works in popup (optional, but keep for convenience)
-  document.querySelectorAll(".btnDownload").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const idx = btn.dataset.idx;
-      const chapter = chapters[idx];
-      btn.textContent = "...";
-      btn.disabled = true;
-      try {
-        // Individual fetch still uses popup logic for simplicity
-        const result = await fetchIndividualChapter(source, chapter);
-        await downloadChapterAsDocx(result);
-        btn.textContent = "✓ Xong";
-      } catch (err) {
-        btn.textContent = "⬇ .docx";
-        alert("❌ " + err.message);
-      }
-      btn.disabled = false;
-    });
-  });
+  // Removed individual download buttons logic
 }
 
 // ─── Fetching Logic ───────────────────────────────────────
@@ -441,7 +489,7 @@ async function restoreState() {
   renderPreview(preview, source, url, null, dom.result);
 
   if (chapters && chapters.length) {
-    renderChapters(source, chapters, preview.bookName, document.getElementById("chapterResult"), null, url);
+    await renderChapters(source, chapters, preview.bookName, document.getElementById("chapterResult"), null, url);
   }
 }
 

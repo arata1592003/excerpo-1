@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Mạch nha Grabber",
+  "name": "Cu dơ grabber",
   "version": "1.0",
   "permissions": [
     "activeTab",
@@ -9,7 +9,8 @@
     "storage",
     "unlimitedStorage",
     "webNavigation",
-    "downloads"
+    "downloads",
+    "offscreen"
   ],
   "host_permissions": [
     "https://www.17k.com/*",
@@ -23,7 +24,13 @@
     "https://www.qidian.com/*",
     "https://qidian.com/*",
     "https://www.biquge.tw/*",
-    "https://www.52shuku.net/*"
+    "https://www.52shuku.net/*",
+    "https://fanqienovel.com/*",
+    "https://*.fanqienovel.com/*",
+    "https://cdn.jsdelivr.net/*",
+    "https://tessdata.projectnaptha.com/*",
+    "https://html2canvas.hertzen.com/*",
+    "https://example.com/*"
   ],
   "icons": {
     "16": "icons/icon16.png",
@@ -38,6 +45,12 @@
       "128": "icons/icon128.png"
     }
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["tesseract/*"],
+      "matches": ["*://*/*"]
+    }
+  ],
   "background": {
     "service_worker": "background.js"
   }

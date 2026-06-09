@@ -80,5 +80,18 @@ const Source17k = {
         } finally {
             chrome.tabs.remove(tab.id).catch(() => { });
         }
-    }
+    },
+    parseContent: (container) => {
+        const clone = container.cloneNode(true);
+        clone.querySelectorAll([
+            "script", "style", "iframe", "i[t]",
+            ".has-text-centered", ".chapter-control", ".is-size-2", ".mt-4", ".mb-4",
+            ".copy", ".author-say", ".qrcode", ".chapter_text_ad",
+            "#banner_content",
+        ].join(", ")).forEach(el => el.remove());
+
+        return Array.from(clone.querySelectorAll("p"))
+            .map(p => p.textContent.trim())
+            .filter(s => s.length > 0);
+    },
 };
