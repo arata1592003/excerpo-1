@@ -14,9 +14,10 @@ async function getWorker() {
     tessWorker = await window.Tesseract.createWorker('chi_sim', 1, {
       workerPath: chrome.runtime.getURL('tesseract/worker.min.js'),
       langPath: chrome.runtime.getURL('tesseract'),
-      corePath: chrome.runtime.getURL('tesseract/tesseract-core-simd-lstm.wasm.js'),
+      corePath: chrome.runtime.getURL('tesseract/tesseract-core.wasm.js'),
       workerBlobURL: false,
       gzip: false,
+      cacheMethod: 'none',
       // Dùng IndexedDB cache mặc định: lần đầu lưu vào cache, các lần sau đọc tức thì
       logger: m => {
         if (m.progress > 0) console.log(`[OCR] ${m.status}: ${Math.round(m.progress * 100)}%`);

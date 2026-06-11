@@ -19,7 +19,7 @@ const dom = {
 
 // ─── Initialization ──────────────────────────────────────
 async function init() {
-  restoreState();
+  await restoreState();
   startMonitoringBackground();
   setupEventListeners();
   showRandomMeme();
@@ -90,11 +90,11 @@ function renderBackgroundProgress(task) {
         });
       }
     }
-  } else if (task.status === 'completed') {
+  } else if (task.status === 'completed' || task.status === 'stopped') {
     progressDiv.innerHTML = `
-      <div style="color:#0f9d58;font-weight:bold;">✅ Hoàn tất!</div>
-      <div style="font-size:10px;">Tất cả các chương đã được tải xong.</div>
-      ${renderProgressBar(100)}
+      <div style="color:#0f9d58;font-weight:bold;">✅ ${task.status === 'stopped' ? 'Đã dừng' : 'Hoàn tất!'}</div>
+      <div style="font-size:10px;">${task.status === 'stopped' ? `Đã tải xong ${done}/${total} chương.` : 'Tất cả các chương đã được tải xong.'}</div>
+      ${renderProgressBar(task.status === 'stopped' ? pct : 100)}
     `;
     const btnAll = document.getElementById("btnDownloadAll");
     if (btnAll) {
@@ -181,10 +181,11 @@ function renderPreview(d, source, url, tabId, resultDiv) {
 }
 
 async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url) {
-  const storage = await chrome.storage.local.get(["cachedFolder", "cachedFormat", "cachedConflictAction"]);
-  const defaultFolder = storage.cachedFolder || "Cu do grabber";
+  const storage = await chrome.storage.local.get(["cachedFolder", "cachedFormat", "cachedConflictAction", "cachedSelectedChapters"]);
+  const defaultFolder = storage.cachedFolder || "Cu đơ grabber";
   const defaultFormat = storage.cachedFormat || "docx";
   const defaultConflict = storage.cachedConflictAction || "uniquify";
+  const cachedSelectedChapters = storage.cachedSelectedChapters;
 
   chapterDiv.innerHTML = `
     <div style="margin:6px 0;background:#f5f5f5;padding:6px;border-radius:4px;border:1px solid #eee;">
@@ -205,9 +206,10 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
       ${chapters.map((c, idx) => {
     const isVip = c.type === "vip";
     const icon = isVip ? "🔒" : c.type === "unvip" ? "🔓" : "";
+    const isChecked = cachedSelectedChapters === undefined ? true : cachedSelectedChapters.includes(idx);
     return `
           <div style="font-size:11px;padding:4px 8px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px;">
-            <input type="checkbox" class="chap-checkbox" data-idx="${idx}" checked>
+            <input type="checkbox" class="chap-checkbox" data-idx="${idx}" ${isChecked ? 'checked' : ''}>
             <span style="color:#999;min-width:30px;">#${c.chapter_number}</span>
             <a href="${c.chapter_url}" target="_blank" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a73e8;">
               ${c.chapter_title}
@@ -256,11 +258,22 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
     chrome.storage.local.set({ cachedConflictAction: e.target.value });
   });
 
+  const saveSelected = () => {
+    const selected = Array.from(document.querySelectorAll(".chap-checkbox:checked")).map(cb => parseInt(cb.dataset.idx));
+    chrome.storage.local.set({ cachedSelectedChapters: selected });
+  };
+
+  chapterDiv.addEventListener('change', (e) => {
+    if (e.target.classList.contains('chap-checkbox')) saveSelected();
+  });
+
   document.getElementById("btnSelectAll").addEventListener("click", () => {
     document.querySelectorAll(".chap-checkbox").forEach(cb => cb.checked = true);
+    saveSelected();
   });
   document.getElementById("btnDeselectAll").addEventListener("click", () => {
     document.querySelectorAll(".chap-checkbox").forEach(cb => cb.checked = false);
+    saveSelected();
   });
 
   document.getElementById("btnQuickSelect").addEventListener("click", () => {
@@ -287,6 +300,7 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
         }
       }
     });
+    saveSelected();
   });
 
   // Download all button sends message to background
@@ -418,7 +432,7 @@ async function fetchIndividualChapter(source, chapter) {
         const container = document.querySelector(contentSelector || "div[id^='cld-']");
 
         if (container) {
-          chapterTitle = titleEl?.textContent.trim() || title;
+          chapterTitle = title;
           const clone = container.cloneNode(true);
           clone.querySelectorAll([
             "script", "style", "iframe", "i[t]",

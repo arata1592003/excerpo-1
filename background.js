@@ -25,6 +25,8 @@ const WORKER_COUNT = 3;
 
 // ─── Task State ──────────────────────────────────────────
 let activeBatchTask = null;
+let storageInitResolve;
+let storageInitPromise = new Promise(r => storageInitResolve = r);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'KEEPALIVE_PING') {
@@ -64,7 +66,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'GET_TASK_STATUS') {
-    sendResponse(activeBatchTask);
+    storageInitPromise.then(() => {
+      sendResponse(activeBatchTask);
+    });
+    return true; // Keep message channel open for async response
   }
 
   return true;
@@ -90,9 +95,9 @@ function updateExtensionBadge(task) {
     const pct = Math.round((task.doneCount / total) * 100);
     chrome.action.setBadgeText({ text: `${pct}%` });
     chrome.action.setBadgeBackgroundColor({ color: task.status === 'stopping' ? '#ea4335' : '#1a73e8' });
-  } else if (task.status === 'completed') {
-    chrome.action.setBadgeText({ text: 'OK' });
-    chrome.action.setBadgeBackgroundColor({ color: '#0f9d58' });
+  } else if (task.status === 'completed' || task.status === 'stopped') {
+    chrome.action.setBadgeText({ text: task.status === 'stopped' ? 'STOP' : 'OK' });
+    chrome.action.setBadgeBackgroundColor({ color: task.status === 'stopped' ? '#f4b400' : '#0f9d58' });
     setTimeout(() => chrome.action.setBadgeText({ text: '' }), 5000);
   } else if (task.status === 'error') {
     chrome.action.setBadgeText({ text: 'ERR' });
@@ -217,7 +222,7 @@ async function runBatchDownload() {
           reader.readAsDataURL(blob);
         });
 
-        const baseFolder = activeBatchTask.folderName || "Cu dơ grabber";
+        const baseFolder = activeBatchTask.folderName || "Cu đơ grabber";
         const bookSubFolder = (activeBatchTask.bookName || "Truyen").replace(/[\\/:*?"<>|]/g, "_");
         const action = activeBatchTask.conflictAction || 'uniquify';
         
@@ -250,7 +255,7 @@ async function runBatchDownload() {
   await Promise.all(workers);
 
   if (activeBatchTask.status === 'running' || activeBatchTask.status === 'stopping') {
-    activeBatchTask.status = 'completed';
+    activeBatchTask.status = activeBatchTask.status === 'stopping' ? 'stopped' : 'completed';
     activeBatchTask.activeWorkers = 0;
     activeBatchTask.activeChapters = [];
     
@@ -339,7 +344,7 @@ async function parseOnTab(tabId, source, url, alertMsg, num, title) {
       let parsedResult = null;
 
       if (container) {
-        chapterTitle = titleEl?.textContent.trim() || title;
+        chapterTitle = title;
 
         if (parseContentStr) {
           try {
@@ -516,4 +521,5 @@ chrome.storage.local.get("activeBatchTask", async (res) => {
 
     runBatchDownload();
   }
+  storageInitResolve();
 });
