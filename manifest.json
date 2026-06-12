@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Cu đơ grabber",
+  "name": "Excerpo",
   "version": "1.0",
   "permissions": [
     "activeTab",

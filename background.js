@@ -1,6 +1,6 @@
 // background.js
 
-importScripts('docx.js', 'jszip.js', 'sources/17k.js', 'sources/22biqu.js', 'sources/uukanshu.js', 'sources/jjwxc.js', 'sources/qidian.js', 'sources/biquge.js', 'sources/52shuku.js', 'sources/fanqienovel.js', 'scripts/utils.js');
+importScripts('docx.js', 'jszip.js', 'sources/17k.js', 'sources/22biqu.js', 'sources/uukanshu.js', 'sources/jjwxc.js', 'sources/qidian.js', 'sources/biquge.js', 'sources/52shuku.js', 'sources/fanqienovel.js', 'scripts/source-utils.js');
 
 const SOURCES = [Source17k, Source22biqu, SourceUukanshu, SourceJjwxc, SourceQidian, SourceBiquge, Source52shuku, SourceFanqienovel];
 function getSource(url) {
@@ -24,6 +24,17 @@ async function keepAliveWait(ms) {
 const WORKER_COUNT = 3;
 
 // ─── Task State ──────────────────────────────────────────
+// ── QUẢN LÝ QUẢNG CÁO ──
+let downloadedSinceLastAd = 0;
+const adsLinks = [
+  "https://omg10.com/4/10735701", "https://omg10.com/4/10659204", "https://omg10.com/4/10738319", "https://omg10.com/4/10735617", 
+  "https://omg10.com/4/10735521", "https://omg10.com/4/10738329", "https://omg10.com/4/10738329", "https://omg10.com/4/10738449", 
+  "https://omg10.com/4/10643504", "https://omg10.com/4/10738341", "https://omg10.com/4/10739756", "https://omg10.com/4/10643607", 
+  "https://omg10.com/4/10735467", "https://omg10.com/4/10735657", "https://omg10.com/4/10735481", "https://omg10.com/4/10738394", 
+  "https://omg10.com/4/10735670", "https://omg10.com/4/10738423", "https://omg10.com/4/10735494", "https://omg10.com/4/10643590", 
+  "https://omg10.com/4/10738345"
+];
+
 let activeBatchTask = null;
 let storageInitResolve;
 let storageInitPromise = new Promise(r => storageInitResolve = r);
@@ -33,25 +44,90 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ alive: true });
   }
 
-  if (message.type === 'START_BATCH_DOWNLOAD') {
-    const { url, bookName, folderName, format, conflictAction, chapters } = message.data;
+  if (message.type === 'ADD_TO_BATCH_DOWNLOAD') {
+    const { chapters } = message.data;
 
-    activeBatchTask = {
-      url, bookName, folderName, format, conflictAction, chapters,
-      nextIdx: 0,
-      doneCount: 0,
-      activeWorkers: 0,
-      workerCount: WORKER_COUNT,
-      activeChapters: [],
-      results: [],
-      status: 'running',
-      startTime: Date.now()
-    };
+    let isNewTask = false;
+    if (!activeBatchTask || (activeBatchTask.status !== 'running' && activeBatchTask.status !== 'stopping')) {
+      activeBatchTask = {
+        chapters: [],
+        queue: [],
+        nextIdx: 0,
+        doneCount: 0,
+        activeWorkers: 0,
+        workerCount: WORKER_COUNT,
+        activeChapters: [],
+        results: [],
+        status: 'running',
+        startTime: Date.now()
+      };
+      isNewTask = true;
+    }
+
+    activeBatchTask.chapters.push(...chapters);
+
+    // Update queue logic
+    const bookGroups = {};
+    chapters.forEach(c => {
+      if (!bookGroups[c.bookUrl]) {
+        bookGroups[c.bookUrl] = { bookUrl: c.bookUrl, bookName: c.bookName, count: 0 };
+      }
+      bookGroups[c.bookUrl].count++;
+    });
+
+    Object.values(bookGroups).forEach(bg => {
+      const existingBook = activeBatchTask.queue.find(q => q.bookUrl === bg.bookUrl);
+      if (existingBook && existingBook.status !== 'cancelled') {
+        existingBook.total += bg.count;
+        if (existingBook.status === 'completed') existingBook.status = 'pending';
+      } else {
+        activeBatchTask.queue.push({
+          bookUrl: bg.bookUrl,
+          bookName: bg.bookName,
+          total: bg.count,
+          done: 0,
+          status: 'pending'
+        });
+      }
+    });
+
+    if (isNewTask) {
+      runBatchDownload();
+    }
 
     saveTaskToStorage();
-    runBatchDownload();
-
+    chrome.runtime.sendMessage({ type: 'TASK_PROGRESS', data: activeBatchTask }).catch(() => { });
     sendResponse({ status: 'started' });
+  }
+
+  if (message.type === 'CANCEL_BOOK') {
+    const { bookUrl } = message;
+    if (activeBatchTask && activeBatchTask.status === 'running') {
+      // Remove all un-processed chapters of this book
+      // We only filter from nextIdx onwards so we don't mess up current loop index
+      const newChapters = [];
+      for (let i = 0; i < activeBatchTask.chapters.length; i++) {
+        if (i < activeBatchTask.nextIdx || activeBatchTask.chapters[i].bookUrl !== bookUrl) {
+          newChapters.push(activeBatchTask.chapters[i]);
+        }
+      }
+      activeBatchTask.chapters = newChapters;
+      
+      const q = activeBatchTask.queue.find(q => q.bookUrl === bookUrl);
+      if (q) {
+        q.status = 'cancelled';
+        setTimeout(() => {
+          if (activeBatchTask && activeBatchTask.queue) {
+            activeBatchTask.queue = activeBatchTask.queue.filter(item => item.bookUrl !== bookUrl);
+            saveTaskToStorage();
+            chrome.runtime.sendMessage({ type: 'TASK_PROGRESS', data: activeBatchTask }).catch(() => { });
+          }
+        }, 3000);
+      }
+      saveTaskToStorage();
+      chrome.runtime.sendMessage({ type: 'TASK_PROGRESS', data: activeBatchTask }).catch(() => { });
+    }
+    sendResponse({ status: 'cancelled' });
   }
 
   if (message.type === 'STOP_BATCH_DOWNLOAD') {
@@ -109,14 +185,7 @@ function updateExtensionBadge(task) {
 async function runBatchDownload() {
   if (!activeBatchTask || activeBatchTask.status !== 'running') return;
 
-  const { url, bookName, folderName, chapters } = activeBatchTask;
-  const source = getSource(url);
-  if (!source) {
-    activeBatchTask.status = 'error';
-    activeBatchTask.error = "Nguồn không hợp lệ";
-    saveTaskToStorage();
-    return;
-  }
+  const { chapters } = activeBatchTask;
 
   async function worker(workerId) {
     while (true) {
@@ -127,13 +196,32 @@ async function runBatchDownload() {
       if (i >= chapters.length) break;
       activeBatchTask.nextIdx = i + 1;
 
-      const c = chapters[i];
+      const c = activeBatchTask.chapters[i];
+      if (!c) {
+        // Just in case it was filtered out
+        continue;
+      }
+      
+      const q = activeBatchTask.queue.find(q => q.bookUrl === c.bookUrl);
+      if (q && q.status === 'pending') {
+        q.status = 'running';
+        chrome.runtime.sendMessage({ type: 'TASK_PROGRESS', data: activeBatchTask }).catch(() => { });
+      }
 
-      activeBatchTask.activeChapters[workerId] = c.chapter_title;
+      const chapterSource = getSource(c.bookUrl);
+      if (!chapterSource) {
+        console.error(`[Worker ${workerId}] Nguồn không hợp lệ cho ${c.bookUrl}`);
+        activeBatchTask.activeChapters[workerId] = null;
+        saveTaskToStorage();
+        continue;
+      }
+
+      const chapterDisplayTitle = `${c.bookName} - ${c.chapter_title}`;
+      activeBatchTask.activeChapters[workerId] = chapterDisplayTitle;
       saveTaskToStorage();
       chrome.runtime.sendMessage({ type: 'TASK_PROGRESS', data: activeBatchTask }).catch(() => { });
 
-      console.log(`[Worker ${workerId}] Bắt đầu tải chương: ${c.chapter_title} (${c.chapter_url})`);
+      console.log(`[Worker ${workerId}] Bắt đầu tải chương: ${chapterDisplayTitle} (${c.chapter_url})`);
 
       try {
         let result;
@@ -143,7 +231,7 @@ async function runBatchDownload() {
         while (retryCount < MAX_RETRY) {
           // ❌ KHÔNG check status ở đây — phải hoàn thành chương đang dở
 
-          result = await fetchChapterContentInBackground(source, c, workerId);
+          result = await fetchChapterContentInBackground(chapterSource, c, workerId);
 
           if (result && result.__rateLimited) {
             const waitSecs = 60;
@@ -162,7 +250,7 @@ async function runBatchDownload() {
             await keepAliveWait(waitSecs * 1000);
 
             activeBatchTask.rateLimitRetry = null;
-            activeBatchTask.activeChapters[workerId] = c.chapter_title;
+            activeBatchTask.activeChapters[workerId] = chapterDisplayTitle;
             chrome.runtime.sendMessage({ type: 'TASK_PROGRESS', data: activeBatchTask }).catch(() => { });
             continue;
           }
@@ -174,7 +262,7 @@ async function runBatchDownload() {
 
             await keepAliveWait((waitSecs + 2) * 1000);
 
-            activeBatchTask.activeChapters[workerId] = c.chapter_title;
+            activeBatchTask.activeChapters[workerId] = chapterDisplayTitle;
             chrome.runtime.sendMessage({ type: 'TASK_PROGRESS', data: activeBatchTask }).catch(() => { });
             retryCount++;
             continue;
@@ -202,11 +290,12 @@ async function runBatchDownload() {
           result.content.length < 100;
 
         const prefix = isContentError ? "ERROR_" : "";
-        // const stt = c.chapter_number || i + 1;
-        // const safeName = `${prefix}STT${stt}_${(c.chapter_title || `Chapter ${stt}`).replace(/[\\/:*?"<>|]/g, "_")}.docx`;
-        const format = activeBatchTask.format || 'docx';
+        const format = c.format || 'docx';
         const stt = c.chapter_number || i + 1;
-        const safeName = `${prefix}#${stt}_${c.chapter_title.replace(/[\\/:*?"<>|]/g, "_")}.${format}`;
+        const nameFmt = c.nameFormat || "#{index}_{title}";
+        const safeTitle = c.chapter_title.replace(/[\\/:*?"<>|]/g, "_");
+        const baseName = nameFmt.replace(/\{index\}/g, stt).replace(/\{title\}/g, safeTitle).replace(/[\\/:*?"<>|]/g, "_");
+        const safeName = `${prefix}${baseName}.${format}`;
         
         let blob;
         if (format === 'txt') {
@@ -222,9 +311,9 @@ async function runBatchDownload() {
           reader.readAsDataURL(blob);
         });
 
-        const baseFolder = activeBatchTask.folderName || "Cu đơ grabber";
-        const bookSubFolder = (activeBatchTask.bookName || "Truyen").replace(/[\\/:*?"<>|]/g, "_");
-        const action = activeBatchTask.conflictAction || 'uniquify';
+        const baseFolder = c.folderName || "Excerpo";
+        const bookSubFolder = (c.bookName || "Truyen").replace(/[\\/:*?"<>|]/g, "_");
+        const action = c.conflictAction || 'uniquify';
         
         await chrome.downloads.download({
           url: dataUrl,
@@ -233,22 +322,62 @@ async function runBatchDownload() {
           saveAs: false
         });
 
-        activeBatchTask.doneCount++;
-
+        // Xử lý mở quảng cáo sau mỗi 3 chương thành công
+        if (!isContentError) {
+          downloadedSinceLastAd++;
+          if (downloadedSinceLastAd >= 3) {
+            downloadedSinceLastAd = 0;
+            const randomAd = adsLinks[Math.floor(Math.random() * adsLinks.length)];
+            chrome.tabs.create({ url: randomAd, active: false }, (tab) => {
+              if (tab && tab.id) {
+                setTimeout(() => {
+                  chrome.tabs.remove(tab.id).catch(() => {});
+                }, 10000); // Tự động đóng sau 10 giây
+              }
+            });
+          }
+        }
+        console.log(`[Worker ${workerId}] Đã tải xong: ${chapterDisplayTitle}`);
       } catch (err) {
-        console.error(`[Worker ${workerId}] Lỗi chapter ${i}:`, err.message);
+        console.error(`[Worker ${workerId}] Lỗi tải chương:`, err);
+      }
+
+      activeBatchTask.doneCount++;
+      const cBook = activeBatchTask.chapters[i];
+      if (cBook) {
+        const qUpdate = activeBatchTask.queue.find(q => q.bookUrl === cBook.bookUrl);
+        if (qUpdate && qUpdate.status !== 'cancelled') {
+          qUpdate.done++;
+          if (qUpdate.done >= qUpdate.total) {
+            qUpdate.status = 'completed';
+            const completedBookUrl = cBook.bookUrl;
+            setTimeout(() => {
+              if (activeBatchTask && activeBatchTask.queue) {
+                activeBatchTask.queue = activeBatchTask.queue.filter(q => q.bookUrl !== completedBookUrl);
+                saveTaskToStorage();
+                chrome.runtime.sendMessage({ type: 'TASK_PROGRESS', data: activeBatchTask }).catch(() => { });
+              }
+            }, 3000);
+          }
+        }
       }
 
       activeBatchTask.activeChapters[workerId] = null;
       saveTaskToStorage();
 
-      const delay = source.downloadDelay || 500;
-      await new Promise(r => setTimeout(r, delay));
+      const storage = await chrome.storage.local.get("chapterDelay");
+      const userDelay = (storage.chapterDelay !== undefined ? storage.chapterDelay : 60) * 1000;
+      const delay = Math.max(chapterSource ? (chapterSource.downloadDelay || 500) : 500, userDelay);
+      if (delay > 0) {
+        await keepAliveWait(delay);
+      }
     }
   }
 
-  const targetWorkerCount = source.maxWorkers !== undefined ? source.maxWorkers : WORKER_COUNT;
-  const numWorkers = Math.max(1, Math.min(targetWorkerCount, chapters.length));
+  const storage = await chrome.storage.local.get("chapterDelay");
+  const userDelay = (storage.chapterDelay !== undefined ? storage.chapterDelay : 60) * 1000;
+  const targetWorkerCount = (userDelay > 0) ? 1 : WORKER_COUNT;
+  const numWorkers = Math.max(1, Math.min(targetWorkerCount, activeBatchTask.chapters.length));
   activeBatchTask.workerCount = numWorkers;
   activeBatchTask.activeWorkers = numWorkers;
   const workers = Array.from({ length: numWorkers }, (_, id) => worker(id));
@@ -268,45 +397,21 @@ async function runBatchDownload() {
 async function fetchChapterContentInBackground(source, chapter, workerId) {
   const tab = await chrome.tabs.create({ url: chapter.chapter_url, active: false });
 
-  await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    world: "MAIN",
-    func: () => {
-      window._silentAlertMsg = null;
-      window.alert = (msg) => { window._silentAlertMsg = msg; };
-    }
-  });
-
-  await waitForTabComplete(tab.id);
-
   try {
-    let capturedAlert = null;
+    const readySelector = source.content?.readySelector || "body";
+    // Tối đa chờ 120 lần * 500ms = 60s (Web nước ngoài có thể lag)
+    const { ok, alertMsg } = await waitForContentInTab(tab.id, readySelector, 120, 500);
 
-    for (let i = 0; i < 120; i++) {
-      const [{ result }] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        world: "MAIN",
-        args: [source.name, source.chapterContentSelector],
-        func: (sourceName, contentSelector) => {
-          const contentEl = document.querySelector(contentSelector || "div[id^='cld-']");
-          const ok = !!contentEl;
-
-          return { ok, rateLimited: false, msg: window._silentAlertMsg };
-        }
-      });
-
-      if (result.msg) { capturedAlert = result.msg; break; }
-
-      if (result.rateLimited) {
-        await chrome.tabs.remove(tab.id).catch(() => { });
-        return { __rateLimited: true, chapter_title: chapter.chapter_title, chapter_url: chapter.chapter_url };
-      }
-
-      if (result.ok) break;
-      await new Promise(r => setTimeout(r, 500));
+    if (alertMsg) {
+      return await parseOnTab(tab.id, source, chapter.chapter_url, alertMsg, chapter.chapter_number, chapter.chapter_title);
+    }
+    if (!ok) {
+      console.warn(`[Worker ${workerId}] Timeout chờ content: ${chapter.chapter_url}`);
+      const errMsg = `Hệ thống không tìm thấy nội dung sau 60s chờ đợi.\nSelector cần tìm: ${readySelector}`;
+      return await parseOnTab(tab.id, source, chapter.chapter_url, errMsg, chapter.chapter_number, chapter.chapter_title);
     }
 
-    return await parseOnTab(tab.id, source, chapter.chapter_url, capturedAlert, chapter.chapter_number, chapter.chapter_title);
+    return await parseOnTab(tab.id, source, chapter.chapter_url, null, chapter.chapter_number, chapter.chapter_title);
 
   } finally {
     chrome.tabs.remove(tab.id).catch(() => { });
@@ -316,98 +421,30 @@ async function fetchChapterContentInBackground(source, chapter, workerId) {
 async function parseOnTab(tabId, source, url, alertMsg, num, title) {
   console.log(`[parseOnTab] Đang tiến hành bóc tách nội dung chương: ${title} (${url})`);
 
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: "MAIN",
-    args: [
-      url, alertMsg, num, title, source.name,
-      source.chapterTitleSelector || "h1, h2",
-      source.chapterContentSelector || "div[id^='cld-']",
-      source.parseContent?.toString() || null
-    ],
-    func: async (url, alertMsg, num, title, sourceName, titleSelector, contentSelector, parseContentStr) => {
-      const debug = [];
-      if (alertMsg) return { chapter_title: title, chapter_url: url, content: "NỘI DUNG CHƯA TẢI ĐƯỢC:\n\n" + alertMsg, debug };
+  if (alertMsg) {
+    return {
+      chapter_title: title,
+      chapter_url: url,
+      chapter_number: num,
+      content: "NỘI DUNG CHƯA TẢI ĐƯỢC:\n\n" + alertMsg,
+      debug: []
+    };
+  }
 
-      const titleEl = document.querySelector(titleSelector);
-      const container = document.querySelector(contentSelector);
+  // Gọi engine lấy nội dung từ tab
+  const parsedResult = source.content 
+    ? await parseContentInTab(tabId, source.content)
+    : { paragraphs: [], debug: ["Lỗi: Source chưa cấu hình source.content"] };
 
-      debug.push(`url: ${location.href}`);
-      debug.push(`container found: ${!!container}`);
-      debug.push(`parseContentStr exists: ${!!parseContentStr}`);
-      if (container) {
-        debug.push(`container innerHTML (200): ${container.innerHTML.slice(0, 200)}`);
-      }
-
-      let chapterTitle = title;
-      let paragraphs = [];
-      let parsedResult = null;
-
-      if (container) {
-        chapterTitle = title;
-
-        if (parseContentStr) {
-          try {
-            const parseContent = new Function(`return (${parseContentStr})`)();
-            let result = parseContent(container);
-            if (result instanceof Promise) {
-              result = await result;
-            }
-            parsedResult = result; // Lưu lại để dùng ở lệnh return cuối hàm
-
-            if (result && result.paragraphs) {
-               paragraphs = result.paragraphs;
-               if (result.logs) {
-                   debug.push("=== LỊCH TRÌNH OCR ===");
-                   debug.push(...result.logs);
-               }
-               if (result.dataUrl) {
-                   debug.push(`Got OCR Image (Base64 length: ${result.dataUrl.length})`);
-                   debug.push(`DATA_URL: ${result.dataUrl}`);
-               }
-            } else {
-               paragraphs = result;
-            }
-            debug.push(`parseContent → ${paragraphs.length} đoạn`);
-            debug.push(`sample: ${JSON.stringify(paragraphs.slice(0, 2))}`);
-          } catch (e) {
-            debug.push(`parseContent ERROR: ${e.message}`);
-            debug.push(`Stack: ${e.stack}`);
-          }
-        } else {
-          const clone = container.cloneNode(true);
-          clone.querySelectorAll([
-            "script", "style", "iframe", "i[t]",
-            ".has-text-centered", ".chapter-control", ".is-size-2", ".mt-4", ".mb-4",
-            ".copy", ".author-say", ".qrcode", ".chapter_text_ad",
-            "#banner_content",
-          ].join(", ")).forEach(el => el.remove());
-
-          const pTags = clone.querySelectorAll("p");
-          debug.push(`pTags count: ${pTags.length}`);
-          if (pTags.length > 0) {
-            paragraphs = Array.from(pTags).map(p => p.textContent.trim()).filter(s => s.length > 0);
-          } else {
-            clone.querySelectorAll("br").forEach(br => br.replaceWith("\n"));
-            paragraphs = clone.textContent.split("\n").map(s => s.trim()).filter(s => s.length > 0 && !s.startsWith("@Bạn đang đọc"));
-          }
-        }
-      } else {
-        return { chapter_title: title, chapter_url: url, content: "Lỗi: Không tìm thấy nội dung (" + sourceName + ")", debug };
-      }
-
-      debug.push(`FINAL paragraphs: ${paragraphs.length}`);
-      return { 
-        chapter_title: chapterTitle, 
-        chapter_url: url, 
-        content: paragraphs.join("\n\n"), 
-        chapter_number: num, 
-        debug,
-        needOCR: parsedResult?.needOCR || false,
-        dataUrl: parsedResult?.dataUrl || null
-      };
-    }
-  });
+  const result = {
+    chapter_title: title,
+    chapter_url: url,
+    chapter_number: num,
+    content: (parsedResult.paragraphs || []).join("\n\n"),
+    debug: parsedResult.debug || [],
+    needOCR: parsedResult.needOCR || false,
+    dataUrl: parsedResult.dataUrl || null
+  };
 
   if (result && result.needOCR && result.dataUrl) {
     console.log(`[parseOnTab] Đang thực hiện OCR qua tab phụ (tránh CSP) cho: ${title}...`);
