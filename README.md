@@ -24,7 +24,7 @@ Mục đích chính của công cụ là phục vụ cho nhu cầu lưu trữ of
 
 ## 🚀 Tính năng nổi bật
 * **Đa nền tảng:** Hỗ trợ quét và tải mượt mà từ nhiều website lớn như: `17k`, `qidian`, `jjwxc`, `biquge`, `52shuku`, `fanqienovel`, `uukanshu`...
-* **Auto-Bypass Rate Limit & Captcha:** Tích hợp OCR (Tesseract.js) chạy ngầm để đọc và xử lý captcha khi cào dữ liệu, cũng như thuật toán delay thông minh tránh bị chặn IP.
+* **Auto-Bypass Rate Limit & Captcha:** Tích hợp OCR (Tesseract.js) chạy ngầm để đọc và khi cào dữ liệu, cũng như thuật toán delay thông minh tránh bị chặn IP.
 * **Tải ngầm đa luồng:** Hoạt động độc lập bằng Service Worker dưới nền. Bạn có thể lướt web bình thường, tắt tab, tool vẫn kiên nhẫn tải hàng ngàn chương mà không lo đứt gãy.
 * **Tuỳ biến File & Định dạng linh hoạt:** Cho phép trích xuất ra định dạng văn bản chuẩn `.txt` hoặc tệp Word `.docx` cực nhẹ. Hỗ trợ tự do cấu hình quy tắc đặt tên file (VD: `chuong-{index}_{title}`).
 
