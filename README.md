@@ -1,6 +1,6 @@
 <div align="center">
 
-# 📖 Excerpo
+# <img src="icons/icon48.png" height="36" align="center" alt="Excerpo Icon" /> Excerpo
 **Công cụ trích xuất và tải truyện/text tự động từ đa nền tảng**
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](#)
