@@ -14,36 +14,6 @@ async function clearState() {
 }
 
 /**
- * Tab helpers
- */
-function waitForTabComplete(tabId) {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      chrome.webNavigation.onCompleted.removeListener(listener);
-      resolve();
-    }, 60000);
-
-    function listener(details) {
-      if (details.tabId === tabId && details.frameId === 0) {
-        clearTimeout(timeout);
-        chrome.webNavigation.onCompleted.removeListener(listener);
-        setTimeout(resolve, 500);
-      }
-    }
-
-    chrome.webNavigation.onCompleted.addListener(listener);
-  });
-}
-
-function navigateTab(tabId, url) {
-  return new Promise((resolve) => {
-    chrome.tabs.update(tabId, { url }, () => {
-      waitForTabComplete(tabId).then(resolve);
-    });
-  });
-}
-
-/**
  * Rendering helpers
  */
 function renderProgressBar(pct) {

@@ -43,66 +43,78 @@ function startMonitoringBackground() {
 }
 
 function renderBackgroundProgress(task) {
-  const progressDiv = document.getElementById("downloadProgress");
-  if (!progressDiv) return;
-
-  const total = task.chapters.length;
-  const done = task.doneCount || 0;
-  const pct = Math.round((done / Math.max(1, total)) * 100);
+  const queueList = document.getElementById("queueList");
+  const btnStop = document.getElementById("btnStopDownload");
+  if (!queueList) return;
 
   if (task.status === 'running' || task.status === 'stopping') {
-    const isStopping = task.status === 'stopping';
+    btnStop.style.display = "block";
+    btnStop.textContent = task.status === 'stopping' ? "⏳ Đang dừng lại..." : "⏹ Dừng tải ngầm toàn bộ";
+    btnStop.disabled = task.status === 'stopping';
 
-    // Build active workers list (filter nulls)
-    const activeList = (task.activeChapters || [])
-      .filter(t => t)
-      .map(t => `<div style="font-size:10px;color:#555;padding-left:4px;">⚙️ ${t}</div>`)
-      .join('');
-
-    progressDiv.innerHTML = `
-      <div style="color:${isStopping ? '#ea4335' : '#1a73e8'};font-weight:bold;">
-        ${isStopping ? '⏳ Đang chờ dừng...' : '⏳ Đang tải ngầm:'} ${done}/${total} (${task.workerCount || 1} workers)
-      </div>
-      <div style="margin:4px 0;">${activeList || '<div style="font-size:10px;color:#999;">Đang khởi động workers...</div>'}</div>
-      ${renderProgressBar(pct)}
-      <div style="font-size:10px;color:#999;margin-top:4px;">Bạn có thể đóng popup, việc tải sẽ tiếp tục.</div>
-      ${isStopping ? '' : `
-      <button id="btnStopDownload" style="width:100%;margin-top:8px;padding:6px;background:#ea4335;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;">
-        ⏹ Dừng tải ngầm ngay
-      </button>
-      `}
-    `;
-
-    // Disable download all button if running/stopping
     const btnAll = document.getElementById("btnDownloadAll");
     if (btnAll) {
-      btnAll.disabled = true;
-      btnAll.textContent = isStopping ? "⏳ Đang dừng công việc..." : "⏳ Đang chạy ngầm...";
+      btnAll.textContent = task.status === 'stopping' ? "⏳ Đang dừng công việc..." : "➕ Thêm các chương đã chọn vào hàng đợi";
+      btnAll.disabled = task.status === 'stopping';
     }
 
-    if (!isStopping) {
-      const btnStop = document.getElementById("btnStopDownload");
-      if (btnStop) {
-        btnStop.addEventListener("click", () => {
-          btnStop.disabled = true;
-          btnStop.textContent = "⏳ Đang dừng lại...";
-          chrome.runtime.sendMessage({ type: 'STOP_BATCH_DOWNLOAD' });
+    // Render Queue Items
+    if (!task.queue || task.queue.length === 0) {
+      queueList.innerHTML = `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px;">Đang khởi tạo hàng đợi...</div>`;
+    } else {
+      queueList.innerHTML = task.queue.map((q, idx) => {
+        const pct = Math.round((q.done / Math.max(1, q.total)) * 100);
+        let statusStr = "";
+        let color = "#333";
+        if (q.status === 'running') {
+          statusStr = "Đang tải...";
+          color = "#1a73e8";
+        } else if (q.status === 'pending') {
+          statusStr = "Chờ tải";
+          color = "#f4b400";
+        } else if (q.status === 'completed') {
+          statusStr = "Hoàn tất";
+          color = "#0f9d58";
+        } else if (q.status === 'cancelled') {
+          statusStr = "Đã hủy";
+          color = "#ea4335";
+        }
+
+        return `
+          <div class="queue-item" style="display:flex;align-items:center;gap:6px;">
+            <div style="font-size:11px;font-weight:bold;color:#aaa;min-width:18px;text-align:center;">#${idx + 1}</div>
+            <div class="queue-item-info" style="flex:1;min-width:0;">
+              <div class="queue-item-title" title="${q.bookName}">${q.bookName}</div>
+              <div class="queue-item-status">
+                <span style="color:${color};font-weight:bold;">${statusStr}</span> • ${q.done}/${q.total} chương
+              </div>
+              <div style="height:4px;background:#e0e0e0;border-radius:2px;overflow:hidden;margin-top:4px;">
+                <div style="height:100%;width:${pct}%;background:${color};transition:width 0.3s;border-radius:2px;"></div>
+              </div>
+            </div>
+            ${(q.status === 'running' || q.status === 'pending') ? `
+              <button class="btn-cancel-book" data-url="${q.bookUrl}">X</button>
+            ` : ''}
+          </div>
+        `;
+      }).join("");
+
+      // Add cancel event listeners
+      document.querySelectorAll(".btn-cancel-book").forEach(btn => {
+        btn.addEventListener("click", () => {
+          btn.disabled = true;
+          chrome.runtime.sendMessage({ type: 'CANCEL_BOOK', bookUrl: btn.dataset.url });
         });
-      }
+      });
     }
-  } else if (task.status === 'completed' || task.status === 'stopped') {
-    progressDiv.innerHTML = `
-      <div style="color:#0f9d58;font-weight:bold;">✅ ${task.status === 'stopped' ? 'Đã dừng' : 'Hoàn tất!'}</div>
-      <div style="font-size:10px;">${task.status === 'stopped' ? `Đã tải xong ${done}/${total} chương.` : 'Tất cả các chương đã được tải xong.'}</div>
-      ${renderProgressBar(task.status === 'stopped' ? pct : 100)}
-    `;
+  } else if (task.status === 'completed' || task.status === 'stopped' || task.status === 'error') {
+    btnStop.style.display = "none";
     const btnAll = document.getElementById("btnDownloadAll");
     if (btnAll) {
       btnAll.disabled = false;
       btnAll.textContent = `⬇ Tải lại các chương đã chọn`;
     }
-  } else if (task.status === 'error') {
-    progressDiv.innerHTML = `<div style="color:red;">❌ Lỗi: ${task.error}</div>`;
+    queueList.innerHTML = `<div style="text-align:center;color:#999;font-size:11px;margin-top:20px;">Hàng đợi trống</div>`;
   }
 }
 
@@ -158,10 +170,6 @@ function renderPreview(d, source, url, tabId, resultDiv) {
         let currentTabId = tabId;
         if (!currentTabId) {
           const tab = await chrome.tabs.create({ url, active: false });
-          await new Promise(r => {
-            function listener(tid, info) { if (tid === tab.id && info.status === 'complete') { chrome.tabs.onUpdated.removeListener(listener); r(); } }
-            chrome.tabs.onUpdated.addListener(listener);
-          });
           currentTabId = tab.id;
         }
         chapters = await fetchChaptersFromTab(currentTabId, source);
@@ -182,7 +190,7 @@ function renderPreview(d, source, url, tabId, resultDiv) {
 
 async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url) {
   const storage = await chrome.storage.local.get(["cachedFolder", "cachedFormat", "cachedConflictAction", "cachedSelectedChapters"]);
-  const defaultFolder = storage.cachedFolder || "Cu đơ grabber";
+  const defaultFolder = storage.cachedFolder || "Excerpo";
   const defaultFormat = storage.cachedFormat || "docx";
   const defaultConflict = storage.cachedConflictAction || "uniquify";
   const cachedSelectedChapters = storage.cachedSelectedChapters;
@@ -220,43 +228,14 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
   }).join('')}
     </div>
     <div style="margin-top:10px;background:#f5f5f5;padding:8px;border-radius:4px;border:1px solid #ddd;">
-      <p style="font-size:11px;color:#555;margin-bottom:6px;font-weight:bold;">⚙️ Cấu hình tải:</p>
-      <div style="margin-bottom:10px;">
-        <label style="font-size:10px;color:#666;display:block;">Thư mục tải về (trong thư mục Downloads):</label>
-        <input type="text" id="downloadFolder" style="width:100%;padding:4px;font-size:11px;border:1px solid #ccc;border-radius:3px;" value="${defaultFolder}">
-      </div>
-      <div style="display:flex;gap:10px;margin-bottom:10px;">
-        <div style="flex:1;">
-          <label style="font-size:10px;color:#666;display:block;">Định dạng:</label>
-          <select id="formatSelect" style="width:100%;padding:4px;font-size:11px;border:1px solid #ccc;border-radius:3px;">
-            <option value="docx" ${defaultFormat === 'docx' ? 'selected' : ''}>.docx</option>
-            <option value="txt" ${defaultFormat === 'txt' ? 'selected' : ''}>.txt</option>
-          </select>
-        </div>
-        <div style="flex:1;">
-          <label style="font-size:10px;color:#666;display:block;">Khi trùng file:</label>
-          <select id="conflictActionSelect" style="width:100%;padding:4px;font-size:11px;border:1px solid #ccc;border-radius:3px;">
-            <option value="uniquify" ${defaultConflict === 'uniquify' ? 'selected' : ''}>Tạo bản sao (1)</option>
-            <option value="overwrite" ${defaultConflict === 'overwrite' ? 'selected' : ''}>Ghi đè file cũ</option>
-          </select>
-        </div>
-      </div>
       <button id="btnDownloadAll" style="width:100%;padding:8px;background:#0f9d58;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:bold;">
         ⬇ Tải các chương đã chọn (Chạy ngầm)
       </button>
-      <div id="downloadProgress" style="margin-top:6px;font-size:11px;color:#666;min-height:16px;"></div>
+      <div id="downloadProgress" style="margin-top:6px;font-size:11px;color:#666;min-height:16px;">
+        Cấu hình định dạng tải trong mục Cài đặt (⚙️).
+      </div>
     </div>
   `;
-
-  document.getElementById("downloadFolder").addEventListener("change", (e) => {
-    chrome.storage.local.set({ cachedFolder: e.target.value.trim() });
-  });
-  document.getElementById("formatSelect").addEventListener("change", (e) => {
-    chrome.storage.local.set({ cachedFormat: e.target.value });
-  });
-  document.getElementById("conflictActionSelect").addEventListener("change", (e) => {
-    chrome.storage.local.set({ cachedConflictAction: e.target.value });
-  });
 
   const saveSelected = () => {
     const selected = Array.from(document.querySelectorAll(".chap-checkbox:checked")).map(cb => parseInt(cb.dataset.idx));
@@ -304,7 +283,7 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
   });
 
   // Download all button sends message to background
-  document.getElementById("btnDownloadAll").addEventListener("click", () => {
+  document.getElementById("btnDownloadAll").addEventListener("click", async () => {
     const btnAll = document.getElementById("btnDownloadAll");
     const checkboxes = document.querySelectorAll(".chap-checkbox:checked");
     const filteredChapters = Array.from(checkboxes).map(cb => chapters[parseInt(cb.dataset.idx)]);
@@ -314,34 +293,45 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
       return;
     }
 
-    const adsLinks = [
-      "https://omg10.com/4/10735701", "https://omg10.com/4/10659204", "https://omg10.com/4/10738319", "https://omg10.com/4/10735617", 
-      "https://omg10.com/4/10735521", "https://omg10.com/4/10738329", "https://omg10.com/4/10738329", "https://omg10.com/4/10738449", 
-      "https://omg10.com/4/10643504", "https://omg10.com/4/10738341", "https://omg10.com/4/10739756", "https://omg10.com/4/10643607", 
-      "https://omg10.com/4/10735467", "https://omg10.com/4/10735657", "https://omg10.com/4/10735481", "https://omg10.com/4/10738394", 
-      "https://omg10.com/4/10735670", "https://omg10.com/4/10738423", "https://omg10.com/4/10735494", "https://omg10.com/4/10643590", 
-      "https://omg10.com/4/10738345"
-    ];
-    const randomAd = adsLinks[Math.floor(Math.random() * adsLinks.length)];
-    chrome.tabs.create({ url: randomAd });
-
-    const folderName = document.getElementById("downloadFolder").value.trim() || defaultFolder;
-    const format = document.getElementById("formatSelect").value;
-    const conflictAction = document.getElementById("conflictActionSelect").value;
-    chrome.storage.local.set({ cachedFolder: folderName, cachedFormat: format, cachedConflictAction: conflictAction });
+    const storage = await chrome.storage.local.get(["cachedFolder", "cachedFormat", "cachedConflictAction", "cachedFileNameFormat"]);
+    const format = storage.cachedFormat || "docx";
+    const folderName = storage.cachedFolder || "Excerpo";
+    const conflictAction = storage.cachedConflictAction || "uniquify";
+    const nameFormat = storage.cachedFileNameFormat || "#{index}_{title}";
 
     btnAll.disabled = true;
     btnAll.textContent = `⏳ Đang gửi ${filteredChapters.length} chương...`;
 
+    // Attach per-chapter metadata
+    const enrichedChapters = filteredChapters.map(c => ({
+      ...c,
+      bookName,
+      bookUrl: url,
+      folderName,
+      format,
+      conflictAction,
+      nameFormat
+    }));
+
     chrome.runtime.sendMessage({
-      type: 'START_BATCH_DOWNLOAD',
-      data: { url, bookName, folderName, format, conflictAction, chapters: filteredChapters }
+      type: 'ADD_TO_BATCH_DOWNLOAD',
+      data: { chapters: enrichedChapters }
     }, (response) => {
       if (!response) {
         btnAll.disabled = false;
         btnAll.textContent = "❌ Lỗi kết nối nền";
       } else {
         btnAll.textContent = "🚀 Đã gửi! Đang tải nền...";
+
+        if (typeof window.switchTab === "function") {
+          window.switchTab("queue");
+        }
+
+        // Re-enable button after 2 seconds so user can crawl another book and queue it
+        setTimeout(() => {
+          btnAll.disabled = false;
+          btnAll.textContent = "⬇ Tải các chương đã chọn (Chạy ngầm)";
+        }, 2000);
       }
     });
   });
@@ -525,19 +515,33 @@ function setupEventListeners() {
     dom.result.innerHTML = `<p>⏳ Đang mở trang...</p>`;
     const tab = await chrome.tabs.create({ url, active: false });
 
-    // Wait for tab
-    await new Promise(r => {
-      function listener(tid, info) { if (tid === tab.id && info.status === 'complete') { chrome.tabs.onUpdated.removeListener(listener); r(); } }
-      chrome.tabs.onUpdated.addListener(listener);
-    });
+    // Polling for DOM readiness instead of waiting for complete load
+    let d = null;
+    let html = "";
+    for (let i = 0; i < 20; i++) {
+      try {
+        const [{ result: currentHtml }] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: "MAIN",
+          func: () => document.documentElement ? document.documentElement.outerHTML : "",
+        });
+        if (currentHtml) {
+          html = currentHtml;
+          const parsed = source.parsePreview(currentHtml, url);
+          if (parsed && parsed.bookName) {
+            d = parsed;
+            break;
+          }
+        }
+      } catch (err) {
+        // Ignore errors during navigation or before document exists
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
 
-    const [{ result: html }] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      world: "MAIN",
-      func: () => document.documentElement.outerHTML,
-    });
-
-    const d = source.parsePreview(html, url);
+    if (!d) {
+      d = source.parsePreview(html, url);
+    }
 
     // Chuyển ảnh thành base64 trong tab gốc để tránh bị chặn hiển thị (chống hotlink)
     if (d.coverImage && d.coverImage.startsWith("http")) {
@@ -574,6 +578,86 @@ function setupEventListeners() {
       dom.urlInput.focus();
     });
   });
+
+  // Load initial settings
+  chrome.storage.local.get(["cachedFolder", "cachedFormat", "cachedConflictAction", "chapterDelay", "cachedFileNameFormat"], (s) => {
+    document.getElementById("settingFolder").value = s.cachedFolder || "Excerpo";
+    document.getElementById("settingFormat").value = s.cachedFormat || "docx";
+    document.getElementById("settingConflict").value = s.cachedConflictAction || "uniquify";
+    document.getElementById("settingDelay").value = (s.chapterDelay !== undefined) ? s.chapterDelay : 60;
+    document.getElementById("settingFileNameFormat").value = s.cachedFileNameFormat || "#{index}_{title}";
+  });
+
+  // Auto-save settings on change
+  const saveSettings = () => {
+    const folder = document.getElementById("settingFolder").value.trim() || "Excerpo";
+    const format = document.getElementById("settingFormat").value;
+    const conflict = document.getElementById("settingConflict").value;
+    const nameFormat = document.getElementById("settingFileNameFormat").value.trim() || "#{index}_{title}";
+    let delay = parseInt(document.getElementById("settingDelay").value);
+    if (isNaN(delay) || delay < 0) delay = 60;
+
+    chrome.storage.local.set({
+      cachedFolder: folder,
+      cachedFormat: format,
+      cachedConflictAction: conflict,
+      chapterDelay: delay,
+      cachedFileNameFormat: nameFormat
+    });
+  };
+
+  document.getElementById("settingFolder").addEventListener("input", saveSettings);
+  document.getElementById("settingFormat").addEventListener("change", saveSettings);
+  document.getElementById("settingConflict").addEventListener("change", saveSettings);
+  document.getElementById("settingDelay").addEventListener("input", saveSettings);
+  document.getElementById("settingFileNameFormat").addEventListener("input", saveSettings);
+
+  // Main tab switcher
+  const tabs = document.querySelectorAll(".nav-tab");
+  const panels = document.querySelectorAll(".tab-panel");
+
+  window.switchTab = (targetTab) => {
+    tabs.forEach(t => {
+      if (t.dataset.tab === targetTab) {
+        t.classList.add("active");
+      } else {
+        t.classList.remove("active");
+      }
+    });
+
+    panels.forEach(p => {
+      if (p.id === `panel-${targetTab}`) {
+        p.classList.add("active");
+      } else {
+        p.classList.remove("active");
+      }
+    });
+
+    if (targetTab === "queue") {
+      chrome.runtime.sendMessage({ type: 'GET_TASK_STATUS' }, (task) => {
+        if (task) {
+          renderBackgroundProgress(task);
+        }
+      });
+    }
+  };
+
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      window.switchTab(tab.dataset.tab);
+    });
+  });
+
+  // Global stop button
+  const btnStop = document.getElementById("btnStopDownload");
+  if (btnStop) {
+    btnStop.addEventListener("click", () => {
+      btnStop.disabled = true;
+      btnStop.textContent = "⏳ Đang dừng lại...";
+      chrome.runtime.sendMessage({ type: 'STOP_BATCH_DOWNLOAD' });
+    });
+  }
+
 }
 
 function showRandomMeme() {
