@@ -18,7 +18,7 @@ Mục đích chính của công cụ là phục vụ cho nhu cầu lưu trữ of
 
 | 🎯 Giao diện chính (Cào dữ liệu) | ⏳ Hàng đợi tải ngầm (Quản lý tiến độ) |
 | :---: | :---: |
-| <img src="images/z7927269071833_b959820cf9183640c0d4d359a7e89863.jpg" width="400" alt="Giao diện Cào"> | <img src="images/z7927269022338_77ce97ec5bec0ea8be67eb4816ea4a4b.jpg" width="400" alt="Hàng đợi tải ngầm"> |
+| <img src="images/anhcao.png" width="400" alt="Giao diện Cào"> | <img src="images/z7927269022338_77ce97ec5bec0ea8be67eb4816ea4a4b.jpg" width="400" alt="Hàng đợi tải ngầm"> |
 | **⚙️ Bảng Cài đặt (Định dạng & Thư mục)** | **⚠️ Điều khoản & Lưu ý sử dụng** |
 | <img src="images/z7927269071829_85bef00b8acf6c77b2f30d36422cfd45.jpg" width="400" alt="Cài đặt"> | <img src="images/z7927269122181_8c444270eec616307d21d0df4c4ab569.jpg" width="400" alt="Lưu ý"> |
 
