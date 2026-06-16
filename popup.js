@@ -148,7 +148,7 @@ function renderPreview(d, source, url, tabId, resultDiv) {
       <button id="btnChapters" style="padding:6px 12px;background:#1a73e8;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">
         📋 Lấy danh sách chapter
       </button>
-      <div id="chapterResult" style="margin-top:8px;"></div>
+      <div id="chapterResult" style="margin-top:8px;width:100%;min-width:0;"></div>
     </div>
   `;
 
@@ -216,7 +216,7 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
     const icon = isVip ? "🔒" : c.type === "unvip" ? "🔓" : "";
     const isChecked = cachedSelectedChapters === undefined ? true : cachedSelectedChapters.includes(idx);
     return `
-          <div style="font-size:11px;padding:4px 8px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px;">
+          <div style="font-size:11px;padding:4px 8px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px;width:100%;min-width:0;">
             <input type="checkbox" class="chap-checkbox" data-idx="${idx}" ${isChecked ? 'checked' : ''}>
             <span style="color:#999;min-width:30px;">#${c.chapter_number}</span>
             <a href="${c.chapter_url}" target="_blank" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a73e8;">
