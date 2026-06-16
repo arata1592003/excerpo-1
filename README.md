@@ -23,7 +23,7 @@ Mục đích chính của công cụ là phục vụ cho nhu cầu lưu trữ of
 | <img src="images/z7927269071829_85bef00b8acf6c77b2f30d36422cfd45.jpg" width="400" alt="Cài đặt"> | <img src="images/z7927269122181_8c444270eec616307d21d0df4c4ab569.jpg" width="400" alt="Lưu ý"> |
 
 ## 🚀 Tính năng nổi bật
-* **Đa nền tảng:** Hỗ trợ quét và tải mượt mà từ nhiều website lớn như: `17k`, `qidian`, `jjwxc`, `biquge`, `52shuku`, `fanqienovel`, `uukanshu`...
+* **Đa nền tảng:** Hỗ trợ quét và tải mượt mà từ nhiều website lớn như: `17k`, `22biqu`, `52shuku`, `69shuba`, `biquge`, `fanqienovel`, `jjwxc`, `kakuyomu`, `novel543`, `pixiv`, `qidian`, `syosetu`, `uukanshu`.
 * **Auto-Bypass Rate Limit & Captcha:** Tích hợp OCR (Tesseract.js) chạy ngầm để đọc và khi cào dữ liệu, cũng như thuật toán delay thông minh tránh bị chặn IP.
 * **Tải ngầm đa luồng:** Hoạt động độc lập bằng Service Worker dưới nền. Bạn có thể lướt web bình thường, tắt tab, tool vẫn kiên nhẫn tải hàng ngàn chương mà không lo đứt gãy.
 * **Tuỳ biến File & Định dạng linh hoạt:** Cho phép trích xuất ra định dạng văn bản chuẩn `.txt` hoặc tệp Word `.docx` cực nhẹ. Hỗ trợ tự do cấu hình quy tắc đặt tên file (VD: `chuong-{index}_{title}`).
