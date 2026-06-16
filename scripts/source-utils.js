@@ -186,6 +186,31 @@ async function parseContentInTab(tabId, contentConfig) {
           return { paragraphs: lines };
         }
 
+        if (t === 'custom') {
+          const idMatch = location.href.match(/id=(\d+)/);
+          if (!idMatch) {
+            debug.push("Không thể lấy ID chương từ URL: " + location.href);
+            return null;
+          }
+          const id = idMatch[1];
+          try {
+            debug.push(`Fetching custom API: https://www.pixiv.net/ajax/novel/${id}`);
+            const res = await fetch(`https://www.pixiv.net/ajax/novel/${id}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (data && data.body && data.body.content) {
+              const ps = data.body.content.split('\n').map(p => p.trim()).filter(Boolean);
+              debug.push(`Custom API fetch success, extracted ${ps.length} paragraphs`);
+              return { paragraphs: ps };
+            } else {
+              throw new Error("Không có nội dung body.content trong phản hồi API");
+            }
+          } catch (err) {
+            debug.push(`Lỗi tải API Custom: ${err.message}`);
+            return null;
+          }
+        }
+
         if (t === 'ocr') {
           const logs = [];
           const loadScript = (src) => new Promise((resolve, reject) => {
