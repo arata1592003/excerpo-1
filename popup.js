@@ -365,10 +365,10 @@ async function fetchChaptersFromTab(tabId, source) {
       return elements.map((el, i) => {
         let url = el.href;
         if (sourceName === 'sangtacviet') {
-           const parent = el.parentElement;
-           const urlKey = Object.keys(parent).find(k => !k.startsWith("__") && !k.startsWith("jQuery"));
-           const path = urlKey ? parent[urlKey] : null;
-           url = path ? `https://sangtacviet.com${path}` : null;
+          const parent = el.parentElement;
+          const urlKey = Object.keys(parent).find(k => !k.startsWith("__") && !k.startsWith("jQuery"));
+          const path = urlKey ? parent[urlKey] : null;
+          url = path ? `https://sangtacviet.com${path}` : null;
         }
         return {
           chapter_number: i + 1,
@@ -430,7 +430,7 @@ async function fetchIndividualChapter(source, chapter) {
             ".copy", ".author-say", ".qrcode", ".chapter_text_ad",
             "#banner_content",
           ].join(", ")).forEach(el => el.remove());
-          
+
           const pTags = clone.querySelectorAll("p");
           if (pTags.length > 0) {
             paragraphs = Array.from(pTags).map(p => p.textContent.trim()).filter(s => s.length > 0);
@@ -439,7 +439,7 @@ async function fetchIndividualChapter(source, chapter) {
             paragraphs = clone.textContent.split("\n").map(s => s.trim()).filter(s => s.length > 0);
           }
         } else {
-           return { chapter_title: title, chapter_url: url, content: "Lỗi tải nội dung" };
+          return { chapter_title: title, chapter_url: url, content: "Lỗi tải nội dung" };
         }
 
         return { chapter_title: chapterTitle, content: paragraphs.join("\n\n"), chapter_url: url, chapter_number: num };
