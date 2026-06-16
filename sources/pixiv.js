@@ -8,14 +8,14 @@ const SourcePixiv = {
       bookName: {
         custom: (doc) => {
           const title = doc.querySelector('title')?.textContent || "";
-          const match = title.match(/[「"']([^」"'\n]+)[」"']\/[「"']([^」"'\n]+)[」"']/);
-          return match ? match[1].trim() : title.replace(/のシリーズ.*$/, "").replace(/Series.*$/, "").trim();
+          const match = title.match(/「([^」]+)」\/「([^」]+)」のシリーズ/);
+          return match ? match[1].trim() : title.replace(/のシリーズ.*$/, "").trim();
         }
       },
       authorName: {
         custom: (doc) => {
           const title = doc.querySelector('title')?.textContent || "";
-          const match = title.match(/[「"']([^」"'\n]+)[」"']\/[「"']([^」"'\n]+)[」"']/);
+          const match = title.match(/「([^」]+)」\/「([^」]+)」のシリーズ/);
           return match ? match[2].trim() : "";
         }
       },

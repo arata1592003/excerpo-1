@@ -136,7 +136,7 @@ function renderPreview(d, source, url, tabId, resultDiv) {
       : `<div style="width:80px;height:110px;background:#eee;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#999;">No cover</div>`
     }
       <div style="flex:1;min-width:0;">
-        <b style="font-size:14px; display:block; word-break:break-word; overflow-wrap:break-word; margin-bottom:4px;">${d.bookName || "Không rõ tên"}</b>
+        <b style="font-size:14px;">${d.bookName || "Không rõ tên"}</b><br>
         <span style="color:#666;font-size:12px;">✍️ ${d.authorName || "Không rõ tác giả"}</span><br>
         <span style="color:#999;font-size:11px;">ID: ${d.sourceBookCode || "?"}</span><br>
         ${d.description ? `<p style="font-size:12px;margin-top:6px;color:#444;">${d.description}...</p>` : ""}
@@ -210,7 +210,7 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
         <button id="btnQuickSelect" style="padding:4px 8px;background:#1a73e8;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Chọn</button>
       </div>
     </div>
-    <div style="max-height:300px;overflow-y:auto;border:1px solid #eee;border-radius:4px;margin-top:6px;">
+    <div style="max-height:300px;overflow-y:auto;overflow-x:hidden;width:100%;border:1px solid #eee;border-radius:4px;margin-top:6px;">
       ${chapters.map((c, idx) => {
     const isVip = c.type === "vip";
     const icon = isVip ? "🔒" : c.type === "unvip" ? "🔓" : "";
@@ -219,7 +219,7 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
           <div style="font-size:11px;padding:4px 8px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px;">
             <input type="checkbox" class="chap-checkbox" data-idx="${idx}" ${isChecked ? 'checked' : ''}>
             <span style="color:#999;min-width:30px;">#${c.chapter_number}</span>
-            <a href="${c.chapter_url}" target="_blank" style="flex:1; display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#1a73e8;">
+            <a href="${c.chapter_url}" target="_blank" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a73e8;">
               ${c.chapter_title}
             </a>
             <span style="width:20px;text-align:center;flex-shrink:0;">${icon}</span>
