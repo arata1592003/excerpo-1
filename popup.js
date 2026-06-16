@@ -136,10 +136,10 @@ function renderPreview(d, source, url, tabId, resultDiv) {
       : `<div style="width:80px;height:110px;background:#eee;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#999;">No cover</div>`
     }
       <div style="flex:1;min-width:0;">
-        <b style="font-size:14px;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;" title="${(d.bookName || 'Không rõ tên').replace(/"/g, '&quot;')}">${d.bookName || "Không rõ tên"}</b>
-        <span style="color:#666;font-size:12px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${(d.authorName || 'Không rõ tác giả').replace(/"/g, '&quot;')}">✍️ ${d.authorName || "Không rõ tác giả"}</span>
+        <b style="font-size:14px; display:block; word-break:break-word; overflow-wrap:break-word; margin-bottom:4px;">${d.bookName || "Không rõ tên"}</b>
+        <span style="color:#666;font-size:12px;">✍️ ${d.authorName || "Không rõ tác giả"}</span><br>
         <span style="color:#999;font-size:11px;">ID: ${d.sourceBookCode || "?"}</span><br>
-        ${d.description ? `<p style="font-size:12px;margin-top:6px;color:#444;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;" title="${d.description.replace(/"/g, '&quot;')}">${d.description}</p>` : ""}
+        ${d.description ? `<p style="font-size:12px;margin-top:6px;color:#444;">${d.description}...</p>` : ""}
         <a href="${d.url}" target="_blank" style="font-size:11px;">🔗 Xem trang gốc</a>
       </div>
     </div>
@@ -219,7 +219,7 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
           <div style="font-size:11px;padding:4px 8px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px;">
             <input type="checkbox" class="chap-checkbox" data-idx="${idx}" ${isChecked ? 'checked' : ''}>
             <span style="color:#999;min-width:30px;">#${c.chapter_number}</span>
-            <a href="${c.chapter_url}" target="_blank" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a73e8;" title="${c.chapter_title.replace(/"/g, '&quot;')}">
+            <a href="${c.chapter_url}" target="_blank" style="flex:1; display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#1a73e8;">
               ${c.chapter_title}
             </a>
             <span style="width:20px;text-align:center;flex-shrink:0;">${icon}</span>
