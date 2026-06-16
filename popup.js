@@ -3,7 +3,7 @@
  * Refactored to use background script for long-running tasks.
  */
 
-const SOURCES = [Source17k, Source22biqu, SourceUukanshu, SourceJjwxc, SourceQidian, SourceBiquge, Source52shuku, SourceFanqienovel, Source69shuba, SourceNovel543, SourceKakuyomu, SourceSyosetu];
+const SOURCES = [Source17k, Source22biqu, SourceUukanshu, SourceJjwxc, SourceQidian, SourceBiquge, Source52shuku, SourceFanqienovel, Source69shuba, SourceNovel543, SourceKakuyomu, SourceSyosetu, SourcePixiv];
 function getSource(url) {
   return SOURCES.find(s => s.pattern.test(url)) || null;
 }
@@ -148,7 +148,7 @@ function renderPreview(d, source, url, tabId, resultDiv) {
       <button id="btnChapters" style="padding:6px 12px;background:#1a73e8;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">
         📋 Lấy danh sách chapter
       </button>
-      <div id="chapterResult" style="margin-top:8px;"></div>
+      <div id="chapterResult" style="margin-top:8px;width:100%;min-width:0;"></div>
     </div>
   `;
 
@@ -210,16 +210,16 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
         <button id="btnQuickSelect" style="padding:4px 8px;background:#1a73e8;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Chọn</button>
       </div>
     </div>
-    <div style="max-height:300px;overflow-y:auto;border:1px solid #eee;border-radius:4px;margin-top:6px;">
+    <div style="max-height:300px;overflow-y:auto;overflow-x:hidden;width:100%;border:1px solid #eee;border-radius:4px;margin-top:6px;">
       ${chapters.map((c, idx) => {
     const isVip = c.type === "vip";
     const icon = isVip ? "🔒" : c.type === "unvip" ? "🔓" : "";
     const isChecked = cachedSelectedChapters === undefined ? true : cachedSelectedChapters.includes(idx);
     return `
-          <div style="font-size:11px;padding:4px 8px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px;">
+          <div style="font-size:11px;padding:4px 8px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px;width:100%;min-width:0;">
             <input type="checkbox" class="chap-checkbox" data-idx="${idx}" ${isChecked ? 'checked' : ''}>
             <span style="color:#999;min-width:30px;">#${c.chapter_number}</span>
-            <a href="${c.chapter_url}" target="_blank" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a73e8;">
+            <a href="${c.chapter_url}" target="_blank" style="flex:1;min-width:0;word-break:break-word;color:#1a73e8;text-decoration:none;line-height:1.3;padding:2px 0;">
               ${c.chapter_title}
             </a>
             <span style="width:20px;text-align:center;flex-shrink:0;">${icon}</span>
@@ -365,10 +365,10 @@ async function fetchChaptersFromTab(tabId, source) {
       return elements.map((el, i) => {
         let url = el.href;
         if (sourceName === 'sangtacviet') {
-           const parent = el.parentElement;
-           const urlKey = Object.keys(parent).find(k => !k.startsWith("__") && !k.startsWith("jQuery"));
-           const path = urlKey ? parent[urlKey] : null;
-           url = path ? `https://sangtacviet.com${path}` : null;
+          const parent = el.parentElement;
+          const urlKey = Object.keys(parent).find(k => !k.startsWith("__") && !k.startsWith("jQuery"));
+          const path = urlKey ? parent[urlKey] : null;
+          url = path ? `https://sangtacviet.com${path}` : null;
         }
         return {
           chapter_number: i + 1,
@@ -430,7 +430,7 @@ async function fetchIndividualChapter(source, chapter) {
             ".copy", ".author-say", ".qrcode", ".chapter_text_ad",
             "#banner_content",
           ].join(", ")).forEach(el => el.remove());
-          
+
           const pTags = clone.querySelectorAll("p");
           if (pTags.length > 0) {
             paragraphs = Array.from(pTags).map(p => p.textContent.trim()).filter(s => s.length > 0);
@@ -439,7 +439,7 @@ async function fetchIndividualChapter(source, chapter) {
             paragraphs = clone.textContent.split("\n").map(s => s.trim()).filter(s => s.length > 0);
           }
         } else {
-           return { chapter_title: title, chapter_url: url, content: "Lỗi tải nội dung" };
+          return { chapter_title: title, chapter_url: url, content: "Lỗi tải nội dung" };
         }
 
         return { chapter_title: chapterTitle, content: paragraphs.join("\n\n"), chapter_url: url, chapter_number: num };
