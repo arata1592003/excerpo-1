@@ -36,7 +36,9 @@
     "https://*.novel543.com/*",
     "https://example.com/*",
     "https://kakuyomu.jp/*",
-    "https://*.kakuyomu.jp/*"
+    "https://*.kakuyomu.jp/*",
+    "https://ncode.syosetu.com/*",
+    "https://*.syosetu.com/*"
   ],
   "icons": {
     "16": "icons/icon16.png",
