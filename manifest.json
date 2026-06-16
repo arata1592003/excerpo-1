@@ -34,7 +34,9 @@
     "https://*.69shuba.cx/*",
     "https://*.69shux.com/*",
     "https://*.novel543.com/*",
-    "https://example.com/*"
+    "https://example.com/*",
+    "https://kakuyomu.jp/*",
+    "https://*.kakuyomu.jp/*"
   ],
   "icons": {
     "16": "icons/icon16.png",
@@ -53,6 +55,13 @@
     {
       "resources": ["tesseract/*"],
       "matches": ["*://*/*"]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.novel543.com/*"],
+      "js": ["scripts/novel543-content.js"],
+      "run_at": "document_end"
     }
   ],
   "background": {
