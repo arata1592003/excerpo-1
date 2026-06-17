@@ -990,7 +990,16 @@ function setupEventListeners() {
         addLog(`Tìm thấy ${books.length} truyện tại trang ${currentPage}`);
 
         for (const book of books) {
-          // ... (permission check logic)
+          // Kiểm tra lại quyền truy cập thực tế trước mỗi bộ truyện
+          const currentHandle = await getRootHandle();
+          const hasPermission = await verifyPermission(currentHandle);
+          if (!hasPermission) {
+            addLog(`⚠️ Cần xác nhận lại quyền để tiếp tục xử lý: ${book.bookName}`, "#f4b400");
+            addLog(`Vui lòng click vào thanh trạng thái File System phía trên, sau đó nhấn "Bắt đầu" để tiếp tục.`, "#f4b400");
+            updateRootStatus();
+            btnStartBulk.disabled = false;
+            return; // Dừng an toàn để người dùng tương tác
+          }
 
           addLog(`Đang xử lý truyện: ${book.bookName}...`);
           
@@ -1004,7 +1013,7 @@ function setupEventListeners() {
           // TRÍCH XUẤT THÊM THÔNG TIN TRUYỆN CHO BULK
           const tabBookInfo = await chrome.tabs.create({ url: book.url, active: false });
           let bookMetadata = { description: "", author: "", cover: "" };
-          for (let k = 0; j < 10; j++) {
+          for (let k = 0; k < 10; k++) {
              const [{result: parsedPreview}] = await chrome.scripting.executeScript({
                target: {tabId: tabBookInfo.id},
                func: () => document.documentElement.outerHTML
@@ -1022,7 +1031,14 @@ function setupEventListeners() {
 
           // Scan local files
           const scanResults = await scanExistingFiles(book.bookName, chapters, source.name);
-          // ... (toDownload logic)
+          const toDownload = [];
+          
+          chapters.forEach((chap, idx) => {
+            const status = scanResults ? scanResults[idx].status : "new";
+            if (status === "new" || status === "updated") {
+              toDownload.push(chap);
+            }
+          });
 
           if (toDownload.length > 0) {
             addLog(`Thêm ${toDownload.length} chương mới của "${book.bookName}" vào hàng đợi.`);
@@ -1042,7 +1058,6 @@ function setupEventListeners() {
               bookAuthor: bookMetadata.author,
               bookCover: bookMetadata.cover
             }));
-            // ... (sendMessage logic)
 
             await new Promise(resolve => {
               chrome.runtime.sendMessage({

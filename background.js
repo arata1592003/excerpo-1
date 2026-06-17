@@ -341,33 +341,45 @@ async function runBatchDownload() {
         const bookSubFolder = (c.bookName || "Truyen").replace(/[\\/:*?"<>|]/g, "_");
         const fullBookPath = `${baseFolder}/${sourceSubFolder}/${bookSubFolder}`;
 
-        // Kiểm tra xem đã tải metadata cho bộ này chưa trong phiên làm việc hiện tại
         if (!activeBatchTask.metadataDownloaded) activeBatchTask.metadataDownloaded = {};
         if (!activeBatchTask.metadataDownloaded[c.bookUrl]) {
           activeBatchTask.metadataDownloaded[c.bookUrl] = true;
+          console.log(`[Metadata] Bắt đầu tải cho: ${c.bookName}`);
 
           // Tải info.txt
-          const infoContent = `Tên truyện: ${c.bookName}\nTác giả: ${c.bookAuthor || "Không rõ"}\nNguồn: ${c.bookUrl}\n\nMô tả:\n${c.bookDescription || "Không có mô tả"}`;
-          const infoBlob = new Blob([infoContent], { type: 'text/plain' });
-          const infoUrl = URL.createObjectURL(infoBlob);
-          chrome.downloads.download({
-            url: infoUrl,
-            filename: `${fullBookPath}/info.txt`,
-            conflictAction: 'overwrite', // Luôn cập nhật info
-            saveAs: false
-          });
+          try {
+            const infoContent = `Tên truyện: ${c.bookName}\nTác giả: ${c.bookAuthor || "Không rõ"}\nNguồn: ${c.bookUrl}\n\nMô tả:\n${c.bookDescription || "Không có mô tả"}`;
+            const infoBlob = new Blob([infoContent], { type: 'text/plain;charset=utf-8' });
+            const readerInfo = new FileReader();
+            readerInfo.onloadend = () => {
+              chrome.downloads.download({
+                url: readerInfo.result,
+                filename: `${fullBookPath}/info.txt`,
+                conflictAction: 'overwrite',
+                saveAs: false
+              }, (id) => {
+                if (chrome.runtime.lastError) console.error("[Metadata Info Error]", chrome.runtime.lastError.message);
+              });
+            };
+            readerInfo.readAsDataURL(infoBlob);
+          } catch (e) { console.error("[Metadata Info Exception]", e); }
 
-          // Tải image.jpg (nếu có cover)
+          // Tải image.jpg
           if (c.bookCover) {
+            console.log(`[Metadata Cover] URL: ${c.bookCover}`);
             chrome.downloads.download({
               url: c.bookCover,
               filename: `${fullBookPath}/image.jpg`,
               conflictAction: 'overwrite',
               saveAs: false
+            }, (id) => {
+              if (chrome.runtime.lastError) {
+                console.error("[Metadata Cover Error]", chrome.runtime.lastError.message);
+                // Thử lại nếu lỗi liên quan đến URL (có thể cần base64)
+              }
             });
           }
         }
-
         // 2. Tải chương truyện
         const action = c.conflictAction || 'uniquify';
         await chrome.downloads.download({
