@@ -8,6 +8,32 @@ function getSource(url) {
   return SOURCES.find(s => s.pattern.test(url)) || null;
 }
 
+// ─── List Engine ──────────────────────────────────────────
+async function parseList(html, url, listConfig) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  const items = doc.querySelectorAll(listConfig.itemSelector);
+  const results = [];
+
+  items.forEach(item => {
+    const data = {};
+    for (const [field, config] of Object.entries(listConfig.fields)) {
+      if (typeof config === "string") {
+        data[field] = item.querySelector(config)?.textContent?.trim() || "";
+      } else {
+        const el = item.querySelector(config.selector);
+        data[field] = el ? (el.getAttribute(config.attr) || el.textContent.trim()) : "";
+      }
+    }
+    if (data.url && !data.url.startsWith("http")) {
+      const baseUrl = new URL(url).origin;
+      data.url = baseUrl + (data.url.startsWith("/") ? "" : "/") + data.url;
+    }
+    results.push(data);
+  });
+  return results;
+}
+
 // ─── UI Helpers ──────────────────────────────────────────
 const dom = {
   urlInput: document.getElementById("urlInput"),
@@ -53,10 +79,13 @@ async function getRootHandle() {
 
 async function verifyPermission(handle) {
   if (!handle) return false;
-  const options = { mode: 'read' };
-  // Chỉ truy vấn, không yêu cầu (request) ở đây để tránh lỗi "User activation required"
-  if ((await handle.queryPermission(options)) === 'granted') return true;
-  return false;
+  try {
+    const options = { mode: 'read' };
+    const status = await handle.queryPermission(options);
+    return status === 'granted';
+  } catch (e) {
+    return false;
+  }
 }
 
 async function verifyPermissionManual(handle) {
@@ -69,7 +98,11 @@ async function verifyPermissionManual(handle) {
 // ─── File Scanning Logic ─────────────────────────────────
 async function scanExistingFiles(bookName, chapters, sourceName) {
   const rootHandle = await getRootHandle();
-  if (!rootHandle || !(await verifyPermission(rootHandle))) return null;
+  if (!rootHandle) return null; // Chưa chọn thư mục gốc
+  
+  if (!(await verifyPermission(rootHandle))) {
+    throw new Error("Mất quyền truy cập thư mục gốc. Vui lòng click 'Cấp quyền' ở thanh trạng thái phía trên.");
+  }
 
   try {
     const safeSourceName = (sourceName || "Unknown").replace(/[\\/:*?"<>|]/g, "_");
@@ -77,12 +110,11 @@ async function scanExistingFiles(bookName, chapters, sourceName) {
     
     let bookHandle;
     try {
-      // 1. Tìm thư mục nguồn (ví dụ: novel543)
       const sourceHandle = await rootHandle.getDirectoryHandle(safeSourceName);
-      // 2. Tìm thư mục truyện bên trong thư mục nguồn
       bookHandle = await sourceHandle.getDirectoryHandle(safeBookName);
     } catch (e) {
-      return null; // Thư mục nguồn hoặc thư mục truyện không tồn tại
+      // Thư mục không tồn tại = Tất cả là chương mới
+      return chapters.map(() => ({ status: 'new' }));
     }
 
     const existingFiles = [];
@@ -98,12 +130,10 @@ async function scanExistingFiles(bookName, chapters, sourceName) {
       const stt = chap.chapter_number;
       const safeTitle = chap.chapter_title.replace(/[\\/:*?"<>|]/g, "_");
       
-      // 1. Check exact match
       const expectedName = nameFormat.replace(/\{index\}/g, stt).replace(/\{title\}/g, safeTitle).replace(/[\\/:*?"<>|]/g, "_") + "." + format;
       if (existingFiles.includes(expectedName)) return { status: 'exists' };
       if (existingFiles.includes("ERROR_" + expectedName)) return { status: 'exists' };
 
-      // 2. Check index match with different title (Web updated)
       const indexPattern = nameFormat.replace(/\{index\}/g, stt).replace(/\{title\}/g, ".*").replace(/[\\/:*?"<>|]/g, "_");
       const regex = new RegExp("^" + indexPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\.\\\* /g, ".*") + "\\." + format + "$");
       
@@ -114,7 +144,7 @@ async function scanExistingFiles(bookName, chapters, sourceName) {
     });
   } catch (err) {
     console.error("Scan error:", err);
-    return null;
+    throw err;
   }
 }
 
@@ -486,7 +516,11 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
       folderName,
       format,
       conflictAction,
-      nameFormat
+      nameFormat,
+      // Metadata for book info & cover
+      bookDescription: storage.lastState?.preview?.description || "",
+      bookAuthor: storage.lastState?.preview?.authorName || "",
+      bookCover: storage.lastState?.preview?.coverImage || ""
     }));
 
     chrome.runtime.sendMessage({
@@ -847,6 +881,191 @@ function setupEventListeners() {
       }
     });
   }
+
+  // Bulk Crawl logic
+  const bulkUrlInput = document.getElementById("bulkUrlInput");
+  const btnStartBulk = document.getElementById("btnStartBulk");
+  const bulkLog = document.getElementById("bulkLog");
+  const btnClearBulkLog = document.getElementById("btnClearBulkLog");
+  
+  const addLog = async (msg, color = "#0f0") => {
+    const logEntry = { time: new Date().toLocaleTimeString(), msg, color };
+    
+    // UI Update
+    const div = document.createElement("div");
+    div.style.color = color;
+    div.textContent = `[${logEntry.time}] ${msg}`;
+    bulkLog.appendChild(div);
+    bulkLog.scrollTop = bulkLog.scrollHeight;
+    bulkLog.style.display = "block";
+
+    // Persistence
+    const data = await chrome.storage.local.get("bulkLogs");
+    const logs = data.bulkLogs || [];
+    logs.push(logEntry);
+    // Giới hạn 200 dòng log để tránh tràn bộ nhớ
+    if (logs.length > 200) logs.shift(); 
+    await chrome.storage.local.set({ bulkLogs: logs });
+  };
+
+  // Restore logs on startup
+  const restoreLogs = async () => {
+    const data = await chrome.storage.local.get("bulkLogs");
+    if (data.bulkLogs && data.bulkLogs.length > 0) {
+      bulkLog.style.display = "block";
+      data.bulkLogs.forEach(log => {
+        const div = document.createElement("div");
+        div.style.color = log.color;
+        div.textContent = `[${log.time}] ${log.msg}`;
+        bulkLog.appendChild(div);
+      });
+      bulkLog.scrollTop = bulkLog.scrollHeight;
+    }
+  };
+  restoreLogs();
+
+  if (btnClearBulkLog) {
+    btnClearBulkLog.addEventListener("click", async () => {
+      if (confirm("Bạn có chắc muốn xóa toàn bộ nhật ký cào nâng cao?")) {
+        await chrome.storage.local.remove("bulkLogs");
+        bulkLog.innerHTML = "<div>[System] Nhật ký đã được dọn dẹp.</div>";
+      }
+    });
+  }
+
+  btnStartBulk.addEventListener("click", async () => {
+    const baseUrl = bulkUrlInput.value.trim();
+    if (!baseUrl) {
+      alert("Vui lòng nhập URL danh sách truyện!");
+      return;
+    }
+
+    const startPage = parseInt(document.getElementById("bulkStartPage").value) || 1;
+    const pageCount = parseInt(document.getElementById("bulkPageCount").value) || 1;
+    const direction = document.getElementById("bulkDirection").value;
+    
+    const source = getSource(baseUrl);
+    if (!source || source.name !== "novel543") {
+      alert("Chế độ nâng cao hiện chỉ hỗ trợ novel543 (hoặc URL chưa đúng)");
+      return;
+    }
+
+    btnStartBulk.disabled = true;
+    bulkLog.style.display = "block";
+    addLog("Bắt đầu quy trình cào nâng cao...");
+
+    try {
+      for (let i = 0; i < pageCount; i++) {
+        const currentPage = direction === "forward" ? startPage + i : startPage - i;
+        if (currentPage < 1) break;
+
+        // Xây dựng URL trang thông minh hơn (hỗ trợ end=2 và các tham số khác)
+        let pageUrl = baseUrl;
+        if (baseUrl.includes("?")) {
+            // Nếu đã có tham số, nối thêm &page=X (trình duyệt sẽ ưu tiên cái sau nếu trùng, hoặc ta có thể replace)
+            const urlObj = new URL(baseUrl);
+            urlObj.searchParams.set("page", currentPage);
+            pageUrl = urlObj.toString();
+        } else {
+            pageUrl = `${baseUrl.endsWith("/") ? baseUrl : baseUrl + "/"}?page=${currentPage}`;
+        }
+
+        addLog(`Đang quét trang ${currentPage}...`, "#1a73e8");
+        addLog(`URL: ${pageUrl}`, "#999");
+        
+        const tab = await chrome.tabs.create({ url: pageUrl, active: false });
+        let html = "";
+        for (let j = 0; j < 10; j++) {
+           const [{result}] = await chrome.scripting.executeScript({
+             target: {tabId: tab.id},
+             func: () => document.documentElement.outerHTML
+           });
+           html = result;
+           if (html.includes("media-content")) break;
+           await new Promise(r => setTimeout(r, 1000));
+        }
+        chrome.tabs.remove(tab.id);
+
+        const books = await parseList(html, pageUrl, source.list);
+        addLog(`Tìm thấy ${books.length} truyện tại trang ${currentPage}`);
+
+        for (const book of books) {
+          // ... (permission check logic)
+
+          addLog(`Đang xử lý truyện: ${book.bookName}...`);
+          
+          // Fetch chapters for this book
+          const chapters = await source.fetchChapters(book.url, (m) => {});
+          if (!chapters || chapters.length === 0) {
+            addLog(`Không tìm thấy chương cho ${book.bookName}, bỏ qua.`, "#ea4335");
+            continue;
+          }
+
+          // TRÍCH XUẤT THÊM THÔNG TIN TRUYỆN CHO BULK
+          const tabBookInfo = await chrome.tabs.create({ url: book.url, active: false });
+          let bookMetadata = { description: "", author: "", cover: "" };
+          for (let k = 0; j < 10; j++) {
+             const [{result: parsedPreview}] = await chrome.scripting.executeScript({
+               target: {tabId: tabBookInfo.id},
+               func: () => document.documentElement.outerHTML
+             });
+             const d = source.parsePreview(parsedPreview, book.url);
+             if (d && d.bookName) {
+                bookMetadata.description = d.description || "";
+                bookMetadata.author = d.authorName || "";
+                bookMetadata.cover = d.coverImage || "";
+                break;
+             }
+             await new Promise(r => setTimeout(r, 1000));
+          }
+          chrome.tabs.remove(tabBookInfo.id);
+
+          // Scan local files
+          const scanResults = await scanExistingFiles(book.bookName, chapters, source.name);
+          // ... (toDownload logic)
+
+          if (toDownload.length > 0) {
+            addLog(`Thêm ${toDownload.length} chương mới của "${book.bookName}" vào hàng đợi.`);
+            
+            const storage = await chrome.storage.local.get(["cachedFolder", "cachedFormat", "cachedConflictAction", "cachedFileNameFormat"]);
+            const enriched = toDownload.map(c => ({
+              ...c,
+              bookName: book.bookName,
+              sourceName: source.name,
+              bookUrl: book.url,
+              folderName: storage.cachedFolder || "Excerpo",
+              format: storage.cachedFormat || "docx",
+              conflictAction: storage.cachedConflictAction || "uniquify",
+              nameFormat: storage.cachedFileNameFormat || "#{index}_{title}",
+              // Metadata from bulk scan
+              bookDescription: bookMetadata.description,
+              bookAuthor: bookMetadata.author,
+              bookCover: bookMetadata.cover
+            }));
+            // ... (sendMessage logic)
+
+            await new Promise(resolve => {
+              chrome.runtime.sendMessage({
+                type: 'ADD_TO_BATCH_DOWNLOAD',
+                data: { chapters: enriched }
+              }, resolve);
+            });
+          } else {
+            addLog(`Truyện "${book.bookName}" đã đủ file, bỏ qua.`);
+          }
+          
+          // Small delay between books to avoid rate limit
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+      addLog("HOÀN TẤT QUY TRÌNH QUÉT NÂNG CAO!", "#0f9d58");
+    } catch (err) {
+      addLog(`LỖI: ${err.message}`, "#ea4335");
+      console.error(err);
+    } finally {
+      btnStartBulk.disabled = false;
+    }
+  });
 
   // Global stop button
   const btnStop = document.getElementById("btnStopDownload");

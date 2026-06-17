@@ -335,17 +335,48 @@ async function runBatchDownload() {
           reader.readAsDataURL(blob);
         });
 
+        // 1. Tạo thư mục và tải metadata (info.txt, image.jpg) nếu là chương đầu tiên của bộ truyện
         const baseFolder = c.folderName || "Excerpo";
         const sourceSubFolder = (c.sourceName || "Unknown").replace(/[\\/:*?"<>|]/g, "_");
         const bookSubFolder = (c.bookName || "Truyen").replace(/[\\/:*?"<>|]/g, "_");
-        const action = c.conflictAction || 'uniquify';
+        const fullBookPath = `${baseFolder}/${sourceSubFolder}/${bookSubFolder}`;
 
+        // Kiểm tra xem đã tải metadata cho bộ này chưa trong phiên làm việc hiện tại
+        if (!activeBatchTask.metadataDownloaded) activeBatchTask.metadataDownloaded = {};
+        if (!activeBatchTask.metadataDownloaded[c.bookUrl]) {
+          activeBatchTask.metadataDownloaded[c.bookUrl] = true;
+
+          // Tải info.txt
+          const infoContent = `Tên truyện: ${c.bookName}\nTác giả: ${c.bookAuthor || "Không rõ"}\nNguồn: ${c.bookUrl}\n\nMô tả:\n${c.bookDescription || "Không có mô tả"}`;
+          const infoBlob = new Blob([infoContent], { type: 'text/plain' });
+          const infoUrl = URL.createObjectURL(infoBlob);
+          chrome.downloads.download({
+            url: infoUrl,
+            filename: `${fullBookPath}/info.txt`,
+            conflictAction: 'overwrite', // Luôn cập nhật info
+            saveAs: false
+          });
+
+          // Tải image.jpg (nếu có cover)
+          if (c.bookCover) {
+            chrome.downloads.download({
+              url: c.bookCover,
+              filename: `${fullBookPath}/image.jpg`,
+              conflictAction: 'overwrite',
+              saveAs: false
+            });
+          }
+        }
+
+        // 2. Tải chương truyện
+        const action = c.conflictAction || 'uniquify';
         await chrome.downloads.download({
           url: dataUrl,
-          filename: `${baseFolder}/${sourceSubFolder}/${bookSubFolder}/${safeName}`,
+          filename: `${fullBookPath}/${safeName}`,
           conflictAction: action,
           saveAs: false
         });
+
         // Xử lý mở quảng cáo sau mỗi 3 chương thành công
         if (!isContentError) {
           downloadedSinceLastAd++;

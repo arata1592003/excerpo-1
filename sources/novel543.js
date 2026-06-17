@@ -2,7 +2,16 @@ const SourceNovel543 = {
   name: "novel543",
   maxWorkers: 1,
   downloadDelay: 2000,
-  pattern: /novel543\.com\/\d+/,
+  pattern: /novel543\.com\/(?:\d+|bookstack|category)/,
+
+  // ── List config (For bulk crawl) ───────────────────────────────────────────
+  list: {
+    itemSelector: "ul.list li.media",
+    fields: {
+      bookName: "h3 a",
+      url: { selector: "h3 a", attr: "href" }
+    }
+  },
 
   // ── Preview config ─────────────────────────────────────────────────────────
   preview: {
