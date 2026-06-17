@@ -336,16 +336,16 @@ async function runBatchDownload() {
         });
 
         const baseFolder = c.folderName || "Excerpo";
+        const sourceSubFolder = (c.sourceName || "Unknown").replace(/[\\/:*?"<>|]/g, "_");
         const bookSubFolder = (c.bookName || "Truyen").replace(/[\\/:*?"<>|]/g, "_");
         const action = c.conflictAction || 'uniquify';
-        
+
         await chrome.downloads.download({
           url: dataUrl,
-          filename: `${baseFolder}/${bookSubFolder}/${safeName}`,
+          filename: `${baseFolder}/${sourceSubFolder}/${bookSubFolder}/${safeName}`,
           conflictAction: action,
           saveAs: false
         });
-
         // Xử lý mở quảng cáo sau mỗi 3 chương thành công
         if (!isContentError) {
           downloadedSinceLastAd++;

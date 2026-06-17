@@ -17,15 +17,158 @@ const dom = {
   memeImg: document.getElementById("memeImg")
 };
 
+// ─── IndexedDB Helpers for Folder Access ──────────────────
+const DB_NAME = "ExcerpoDB";
+const STORE_NAME = "ConfigStore";
+const KEY_ROOT_HANDLE = "rootFolderHandle";
+
+async function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function setRootHandle(handle) {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  await new Promise((resolve, reject) => {
+    const req = tx.objectStore(STORE_NAME).put(handle, KEY_ROOT_HANDLE);
+    req.onsuccess = resolve;
+    req.onerror = reject;
+  });
+}
+
+async function getRootHandle() {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, "readonly");
+  return new Promise((resolve, reject) => {
+    const req = tx.objectStore(STORE_NAME).get(KEY_ROOT_HANDLE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = reject;
+  });
+}
+
+async function verifyPermission(handle) {
+  if (!handle) return false;
+  const options = { mode: 'read' };
+  // Chỉ truy vấn, không yêu cầu (request) ở đây để tránh lỗi "User activation required"
+  if ((await handle.queryPermission(options)) === 'granted') return true;
+  return false;
+}
+
+async function verifyPermissionManual(handle) {
+  if (!handle) return false;
+  const options = { mode: 'read' };
+  if ((await handle.requestPermission(options)) === 'granted') return true;
+  return false;
+}
+
+// ─── File Scanning Logic ─────────────────────────────────
+async function scanExistingFiles(bookName, chapters, sourceName) {
+  const rootHandle = await getRootHandle();
+  if (!rootHandle || !(await verifyPermission(rootHandle))) return null;
+
+  try {
+    const safeSourceName = (sourceName || "Unknown").replace(/[\\/:*?"<>|]/g, "_");
+    const safeBookName = bookName.replace(/[\\/:*?"<>|]/g, "_");
+    
+    let bookHandle;
+    try {
+      // 1. Tìm thư mục nguồn (ví dụ: novel543)
+      const sourceHandle = await rootHandle.getDirectoryHandle(safeSourceName);
+      // 2. Tìm thư mục truyện bên trong thư mục nguồn
+      bookHandle = await sourceHandle.getDirectoryHandle(safeBookName);
+    } catch (e) {
+      return null; // Thư mục nguồn hoặc thư mục truyện không tồn tại
+    }
+
+    const existingFiles = [];
+    for await (const entry of bookHandle.values()) {
+      if (entry.kind === 'file') existingFiles.push(entry.name);
+    }
+
+    const storage = await chrome.storage.local.get(["cachedFileNameFormat", "cachedFormat"]);
+    const nameFormat = storage.cachedFileNameFormat || "#{index}_{title}";
+    const format = storage.cachedFormat || "docx";
+
+    return chapters.map((chap, idx) => {
+      const stt = chap.chapter_number;
+      const safeTitle = chap.chapter_title.replace(/[\\/:*?"<>|]/g, "_");
+      
+      // 1. Check exact match
+      const expectedName = nameFormat.replace(/\{index\}/g, stt).replace(/\{title\}/g, safeTitle).replace(/[\\/:*?"<>|]/g, "_") + "." + format;
+      if (existingFiles.includes(expectedName)) return { status: 'exists' };
+      if (existingFiles.includes("ERROR_" + expectedName)) return { status: 'exists' };
+
+      // 2. Check index match with different title (Web updated)
+      const indexPattern = nameFormat.replace(/\{index\}/g, stt).replace(/\{title\}/g, ".*").replace(/[\\/:*?"<>|]/g, "_");
+      const regex = new RegExp("^" + indexPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\.\\\* /g, ".*") + "\\." + format + "$");
+      
+      const matchedFile = existingFiles.find(f => regex.test(f) || regex.test(f.replace("ERROR_", "")));
+      if (matchedFile) return { status: 'updated' };
+
+      return { status: 'new' };
+    });
+  } catch (err) {
+    console.error("Scan error:", err);
+    return null;
+  }
+}
+
 // ─── Initialization ──────────────────────────────────────
 async function init() {
   await restoreState();
   startMonitoringBackground();
   setupEventListeners();
   showRandomMeme();
+  updateRootStatus();
+}
+
+async function updateRootStatus() {
+  const statusDiv = document.getElementById("rootStatus");
+  const handle = await getRootHandle();
+  if (handle) {
+    const hasPermission = await verifyPermission(handle);
+    if (hasPermission) {
+      statusDiv.innerHTML = `✅ ${handle.name}`;
+      statusDiv.style.background = "#e6f4ea";
+      statusDiv.style.color = "#0f9d58";
+      statusDiv.style.cursor = "default";
+      statusDiv.onclick = null;
+    } else {
+      statusDiv.innerHTML = `🔑 Click cấp quyền: ${handle.name}`;
+      statusDiv.style.background = "#fef7e0";
+      statusDiv.style.color = "#b06000";
+      statusDiv.style.cursor = "pointer";
+      statusDiv.onclick = async () => {
+        if (await verifyPermissionManual(handle)) {
+          updateRootStatus();
+          // Re-scan if chapters are present
+          const data = await chrome.storage.local.get("lastState");
+          if (data.lastState && data.lastState.chapters) {
+             const source = getSource(data.lastState.url);
+             const chapterDiv = document.getElementById("chapterResult");
+             if (source && chapterDiv) {
+               await renderChapters(source, data.lastState.chapters, data.lastState.preview.bookName, chapterDiv, null, data.lastState.url);
+             }
+          }
+        }
+      };
+    }
+  } else {
+    statusDiv.innerHTML = "❌ Chưa chọn thư mục";
+    statusDiv.style.background = "#fce8e6";
+    statusDiv.style.color = "#d93025";
+    statusDiv.style.cursor = "default";
+    statusDiv.onclick = null;
+  }
 }
 
 // ─── Background Sync ─────────────────────────────────────
+
 function startMonitoringBackground() {
   // Listen for progress updates from background
   chrome.runtime.onMessage.addListener((message) => {
@@ -189,11 +332,14 @@ function renderPreview(d, source, url, tabId, resultDiv) {
 }
 
 async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url) {
-  const storage = await chrome.storage.local.get(["cachedFolder", "cachedFormat", "cachedConflictAction", "cachedSelectedChapters"]);
-  const defaultFolder = storage.cachedFolder || "Excerpo";
-  const defaultFormat = storage.cachedFormat || "docx";
-  const defaultConflict = storage.cachedConflictAction || "uniquify";
-  const cachedSelectedChapters = storage.cachedSelectedChapters;
+  const storage = await chrome.storage.local.get(["cachedFolder", "cachedFormat", "cachedConflictAction", "cachedSelectedChapters", "lastState"]);
+  
+  // Chỉ sử dụng cachedSelectedChapters nếu nó thuộc về cùng một URL truyện đang xem
+  const isSameBook = storage.lastState && storage.lastState.url === url;
+  const cachedSelectedChapters = isSameBook ? storage.cachedSelectedChapters : undefined;
+
+  // Scan local files
+  const scanResults = await scanExistingFiles(bookName, chapters, source.name);
 
   chapterDiv.innerHTML = `
     <div style="margin:6px 0;background:#f5f5f5;padding:6px;border-radius:4px;border:1px solid #eee;">
@@ -214,14 +360,40 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
       ${chapters.map((c, idx) => {
     const isVip = c.type === "vip";
     const icon = isVip ? "🔒" : c.type === "unvip" ? "🔓" : "";
-    const isChecked = cachedSelectedChapters === undefined ? true : cachedSelectedChapters.includes(idx);
+
+    // Status from scan
+    const status = scanResults ? scanResults[idx].status : 'new';
+    let statusLabel = "";
+
+    // Logic chọn chương: 
+    // 1. Luôn bỏ chọn nếu Đã có file (status === 'exists')
+    // 2. Nếu không, lấy từ cache nếu là cùng một bộ truyện
+    // 3. Nếu là bộ mới hoàn toàn, mặc định chọn tất cả
+    let isChecked = true;
+    if (status === 'exists') {
+        isChecked = false;
+    } else if (cachedSelectedChapters !== undefined) {
+        isChecked = cachedSelectedChapters.includes(idx);
+    }
+
+    let rowStyle = "";
+    if (status === 'exists') {
+        statusLabel = `<span style="color:#0f9d58;font-size:9px;margin-left:4px;">(Đã có file)</span>`;
+        rowStyle = "opacity: 0.7; background: #f9f9f9;";
+    } else if (status === 'updated') {
+        statusLabel = `<span style="color:#ea4335;font-size:9px;margin-left:4px;font-weight:bold;">(Web cập nhật tiêu đề)</span>`;
+        rowStyle = "background: #fff8f8;";
+        isChecked = true; 
+    }
+
     return `
-          <div style="font-size:11px;padding:4px 8px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px;">
+          <div style="font-size:11px;padding:4px 8px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px;${rowStyle}">
             <input type="checkbox" class="chap-checkbox" data-idx="${idx}" ${isChecked ? 'checked' : ''}>
             <span style="color:#999;min-width:30px;">#${c.chapter_number}</span>
             <a href="${c.chapter_url}" target="_blank" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a73e8;">
               ${c.chapter_title}
             </a>
+            ${statusLabel}
             <span style="width:20px;text-align:center;flex-shrink:0;">${icon}</span>
           </div>
         `;
@@ -237,10 +409,13 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
     </div>
   `;
 
+  // Lưu lại danh sách đã chọn ngay sau khi render lần đầu (để cập nhật cache chính xác)
   const saveSelected = () => {
     const selected = Array.from(document.querySelectorAll(".chap-checkbox:checked")).map(cb => parseInt(cb.dataset.idx));
     chrome.storage.local.set({ cachedSelectedChapters: selected });
   };
+  saveSelected();
+
 
   chapterDiv.addEventListener('change', (e) => {
     if (e.target.classList.contains('chap-checkbox')) saveSelected();
@@ -306,6 +481,7 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
     const enrichedChapters = filteredChapters.map(c => ({
       ...c,
       bookName,
+      sourceName: source.name,
       bookUrl: url,
       folderName,
       format,
@@ -647,6 +823,30 @@ function setupEventListeners() {
       window.switchTab(tab.dataset.tab);
     });
   });
+
+  // Root Folder Selection
+  const btnSelectRoot = document.getElementById("btnSelectRoot");
+  if (btnSelectRoot) {
+    btnSelectRoot.addEventListener("click", async () => {
+      try {
+        const handle = await window.showDirectoryPicker();
+        await setRootHandle(handle);
+        updateRootStatus();
+        
+        // If we have chapters currently rendered, re-scan and re-render them
+        const data = await chrome.storage.local.get("lastState");
+        if (data.lastState && data.lastState.chapters) {
+          const source = getSource(data.lastState.url);
+          const chapterDiv = document.getElementById("chapterResult");
+          if (source && chapterDiv) {
+            await renderChapters(source, data.lastState.chapters, data.lastState.preview.bookName, chapterDiv, null, data.lastState.url);
+          }
+        }
+      } catch (err) {
+        console.error("Picker error:", err);
+      }
+    });
+  }
 
   // Global stop button
   const btnStop = document.getElementById("btnStopDownload");

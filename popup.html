@@ -347,6 +347,13 @@
 
   <!-- ── MAIN CONTENT AREA ── -->
   <div id="mainContent">
+    <div id="globalStatus"
+      style="background: #f8f9fa; border-bottom: 1px solid #eee; padding: 4px 12px; display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+      <div style="color: #666;">📁 File System:</div>
+      <div id="rootStatus" style="font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+        Đang kiểm tra...
+      </div>
+    </div>
 
     <!-- Tab Panel: Crawl -->
     <div id="panel-crawl" class="tab-panel active">
@@ -419,25 +426,15 @@
     <div id="panel-settings" class="tab-panel">
 
       <div class="form-group">
-
-
-
-        <div
-          style="background:#fff3cd; color:#856404; padding:10px; border-radius:4px; margin-top:8px; font-size:11.5px; border: 1px solid #ffeeba; line-height:1.4;">
-          <strong>💡 Hướng dẫn lưu file trên Trình duyệt:</strong><br />
-          Thư mục bạn nhập ở trên sẽ là thư mục con nằm bên trong thư mục gốc <code>Downloads</code> của trình duyệt
-          (Chrome, Edge, Cốc Cốc...).<br /><br />
-          <strong>⚠️ ĐỂ TOOL TỰ ĐỘNG TẢI KHÔNG BỊ TREO:</strong><br />
-          1. Copy và dán đường dẫn này vào thanh địa chỉ: <br /><code>chrome://settings/downloads</code><br />
-          <em>(Lưu ý: Nếu dùng Edge hãy đổi thành <code>edge://</code>, Cốc Cốc thành <code>coccoc://</code>)</em><br />
-          2. Tại phần <strong>Vị trí (Location)</strong>, chọn thư mục gốc bạn muốn (ví dụ Ổ D).<br />
-          3. <strong>TẮT</strong> nút: <em>"Hỏi vị trí lưu từng tệp trước khi tải xuống"</em>. (Nếu bật, trình duyệt sẽ
-          hỏi lưu từng chương một gây đơ máy).<br />
-          4. <strong>TẮT</strong> nút: <em>"Hiển thị nội dung tải xuống khi tệp tải xong"</em> (tuỳ chọn trên các bản
-          cập nhật mới) để tránh thanh download bị đầy chữ.
-        </div>
-        <label>Thư mục tải về:</label>
+        <label>Thư mục tải về (Sub-folder):</label>
         <input type="text" id="settingFolder" value="Excerpo">
+      </div>
+
+      <div class="form-group" style="border: 1px dashed #ccc; padding: 10px; border-radius: 4px; background: #fafafa;">
+        <label style="font-weight: bold; color: #1a73e8;">📁 Thư mục gốc (Root):</label>
+        <p style="font-size: 10px; color: #666; margin-bottom: 8px;">Dùng để so sánh file đã tải. Nên chọn cùng thư mục với "Vị trí tải xuống" của trình duyệt.</p>
+        <button id="btnSelectRoot" style="padding: 5px 10px; font-size: 11px; background: #34a853; margin-bottom: 5px;">Chọn thư mục gốc</button>
+        <div id="rootStatus" style="font-size: 11px; color: #d93025; font-style: italic;">Chưa chọn thư mục gốc</div>
       </div>
 
       <div class="form-group" style="display:flex;gap:5px;">
