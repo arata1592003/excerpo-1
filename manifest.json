@@ -40,7 +40,9 @@
     "https://ncode.syosetu.com/*",
     "https://*.syosetu.com/*",
     "https://www.pixiv.net/*",
-    "https://*.pixiv.net/*"
+    "https://*.pixiv.net/*",
+    "https://*.ixdzs8.com/*",
+    "https://*.ixdzs.com/*"
   ],
   "icons": {
     "16": "icons/icon16.png",

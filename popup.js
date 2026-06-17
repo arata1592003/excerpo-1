@@ -3,7 +3,7 @@
  * Refactored to use background script for long-running tasks.
  */
 
-const SOURCES = [Source17k, Source22biqu, SourceUukanshu, SourceJjwxc, SourceQidian, SourceBiquge, Source52shuku, SourceFanqienovel, Source69shuba, SourceNovel543, SourceKakuyomu, SourceSyosetu, SourcePixiv];
+const SOURCES = [Source17k, Source22biqu, SourceUukanshu, SourceJjwxc, SourceQidian, SourceBiquge, Source52shuku, SourceFanqienovel, Source69shuba, SourceNovel543, SourceKakuyomu, SourceSyosetu, SourcePixiv, SourceIxdzs8];
 function getSource(url) {
   return SOURCES.find(s => s.pattern.test(url)) || null;
 }
@@ -193,7 +193,8 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
   const defaultFolder = storage.cachedFolder || "Excerpo";
   const defaultFormat = storage.cachedFormat || "docx";
   const defaultConflict = storage.cachedConflictAction || "uniquify";
-  const cachedSelectedChapters = storage.cachedSelectedChapters;
+  const cacheObj = storage.cachedSelectedChapters;
+  const useCache = cacheObj && cacheObj.url === url;
 
   chapterDiv.innerHTML = `
     <div style="margin:6px 0;background:#f5f5f5;padding:6px;border-radius:4px;border:1px solid #eee;">
@@ -214,7 +215,7 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
       ${chapters.map((c, idx) => {
     const isVip = c.type === "vip";
     const icon = isVip ? "🔒" : c.type === "unvip" ? "🔓" : "";
-    const isChecked = cachedSelectedChapters === undefined ? true : cachedSelectedChapters.includes(idx);
+    const isChecked = useCache ? cacheObj.selected.includes(idx) : true;
     return `
           <div style="font-size:11px;padding:4px 8px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px;width:100%;min-width:0;">
             <input type="checkbox" class="chap-checkbox" data-idx="${idx}" ${isChecked ? 'checked' : ''}>
@@ -239,7 +240,7 @@ async function renderChapters(source, chapters, bookName, chapterDiv, tabId, url
 
   const saveSelected = () => {
     const selected = Array.from(document.querySelectorAll(".chap-checkbox:checked")).map(cb => parseInt(cb.dataset.idx));
-    chrome.storage.local.set({ cachedSelectedChapters: selected });
+    chrome.storage.local.set({ cachedSelectedChapters: { url, selected } });
   };
 
   chapterDiv.addEventListener('change', (e) => {
