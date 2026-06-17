@@ -1,0 +1,42 @@
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editor / IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Node / NPM
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Build / Dist (Nếu có)
+dist/
+out/
+build/
+
+# Environment / Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+
+# Logs
+logs
+*.log
+
+# Project specific
+.gemini/
+MEMORY.md
