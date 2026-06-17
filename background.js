@@ -1,8 +1,8 @@
 // background.js
 
-importScripts('docx.js', 'jszip.js', 'sources/17k.js', 'sources/22biqu.js', 'sources/uukanshu.js', 'sources/jjwxc.js', 'sources/qidian.js', 'sources/biquge.js', 'sources/52shuku.js', 'sources/fanqienovel.js', 'sources/69shuba.js', 'sources/novel543.js', 'sources/kakuyomu.js', 'sources/syosetu.js', 'sources/pixiv.js', 'scripts/source-utils.js');
+importScripts('docx.js', 'jszip.js', 'sources/17k.js', 'sources/22biqu.js', 'sources/uukanshu.js', 'sources/jjwxc.js', 'sources/qidian.js', 'sources/biquge.js', 'sources/52shuku.js', 'sources/fanqienovel.js', 'sources/69shuba.js', 'sources/novel543.js', 'sources/kakuyomu.js', 'sources/syosetu.js', 'sources/pixiv.js', 'sources/ixdzs8.js', 'scripts/source-utils.js');
 
-const SOURCES = [Source17k, Source22biqu, SourceUukanshu, SourceJjwxc, SourceQidian, SourceBiquge, Source52shuku, SourceFanqienovel, Source69shuba, SourceNovel543, SourceKakuyomu, SourceSyosetu, SourcePixiv];
+const SOURCES = [Source17k, Source22biqu, SourceUukanshu, SourceJjwxc, SourceQidian, SourceBiquge, Source52shuku, SourceFanqienovel, Source69shuba, SourceNovel543, SourceKakuyomu, SourceSyosetu, SourcePixiv, SourceIxdzs8];
 function getSource(url) {
   return SOURCES.find(s => s.pattern.test(url)) || null;
 }
@@ -356,7 +356,7 @@ async function runBatchDownload() {
               if (tab && tab.id) {
                 setTimeout(() => {
                   chrome.tabs.remove(tab.id).catch(() => {});
-                }, 10000); // Tự động đóng sau 10 giây
+                }, 60000); // Tự động đóng sau 60 giây
               }
             });
           }
@@ -419,12 +419,18 @@ async function runBatchDownload() {
 
 // ─── Fetching logic ───────────────────────────────────────
 async function fetchChapterContentInBackground(source, chapter, workerId) {
-  const tab = await chrome.tabs.create({ url: chapter.chapter_url, active: false });
+  const shouldBeActive = chapter.type === 'vip';
+  const tab = await chrome.tabs.create({ url: chapter.chapter_url, active: shouldBeActive });
 
   try {
     const readySelector = source.content?.readySelector || "body";
     // Tối đa chờ 120 lần * 500ms = 60s (Web nước ngoài có thể lag)
     const { ok, alertMsg } = await waitForContentInTab(tab.id, readySelector, 120, 500);
+
+    // Chờ thêm 5 giây riêng cho chương VIP để web xử lý xong giải mã / xác thực
+    if (shouldBeActive && ok && !alertMsg) {
+      await new Promise(r => setTimeout(r, 5000));
+    }
 
     if (alertMsg) {
       return await parseOnTab(tab.id, source, chapter.chapter_url, alertMsg, chapter.chapter_number, chapter.chapter_title);
