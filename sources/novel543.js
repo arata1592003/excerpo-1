@@ -40,9 +40,9 @@ const SourceNovel543 = {
 
   // ── Content config ─────────────────────────────────────────────────────────
   content: {
-    readySelector: ".content",
+    readySelector: ".content[data-merged='true']",
     type:          "paragraphs",
-    selector:      ".content",
+    selector:      ".content[data-merged='true']",
     remove:        [".adBlock", ".gadBlock", "#div-onead-nd-02", ".content > div:last-child"]
   },
 
